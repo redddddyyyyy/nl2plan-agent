@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>perception_node</name>
+  <version>0.1.0</version>
+  <description>GroundingDINO open-vocabulary detector + RGB-D to 3D pose.</description>
+  <maintainer email="rajeevreddy1009@gmail.com">Rajeev Reddy</maintainer>
+  <license>MIT</license>
+
+  <depend>rclpy</depend>
+  <depend>sensor_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>cv_bridge</depend>
+  <depend>tf2_ros</depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

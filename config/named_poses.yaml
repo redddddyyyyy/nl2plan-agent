@@ -1,0 +1,18 @@
+# Named-pose lookup for the agent.
+# x and y in meters, theta in radians (world frame).
+# These must match the layout in src/kitchen_world/worlds/kitchen.world.
+
+start:
+  x: 0.0
+  y: 0.0
+  theta: 0.0
+
+kitchen:
+  x: 5.0
+  y: 2.0
+  theta: 0.0
+
+table:
+  x: 5.5
+  y: 2.5
+  theta: 0.0

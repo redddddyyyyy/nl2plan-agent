@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# ROS2 build artifacts
+build/
+install/
+log/
+
+# Logs and traces
+logs/*.jsonl
+logs/*.log
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Model weights
+*.pth
+*.pt
+*.onnx

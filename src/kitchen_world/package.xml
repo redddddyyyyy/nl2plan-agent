@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>kitchen_world</name>
+  <version>0.1.0</version>
+  <description>Gazebo kitchen world + Ackermann mobile manipulator URDF.</description>
+  <maintainer email="rajeevreddy1009@gmail.com">Rajeev Reddy</maintainer>
+  <license>MIT</license>
+
+  <depend>gazebo_ros</depend>
+  <depend>xacro</depend>
+  <depend>robot_state_publisher</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

@@ -1,0 +1,11 @@
+# Agent-side Python dependencies (no ROS2 needed).
+# Install with: pip install -r requirements.txt
+
+ollama>=0.3.0
+jsonschema>=4.21
+json-repair>=0.25
+pyyaml>=6.0
+streamlit>=1.30
+
+# Test deps
+pytest>=8.0
