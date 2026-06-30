@@ -27,13 +27,6 @@ sudo apt install -y \
 echo "==> Installing Python deps"
 pip install --user -r requirements.txt
 
-echo "==> Cloning hybrid-astar-planner as a submodule"
-if [ ! -d "src/hybrid_astar_planner" ]; then
-  git clone https://github.com/redddddyyyyy/hybrid-astar-planner.git src/_hybrid_astar_repo
-  # The repo's ROS2 package lives in ros2_ws/src/hybrid_astar_planner.
-  ln -s "$(pwd)/src/_hybrid_astar_repo/ros2_ws/src/hybrid_astar_planner" src/hybrid_astar_planner
-fi
-
 echo "==> rosdep update + install"
 sudo rosdep init 2>/dev/null || true
 rosdep update
@@ -50,6 +43,7 @@ echo "==> colcon build"
 colcon build --symlink-install
 
 echo
-echo "Done. Source the workspace and launch:"
+echo "Done. Source the workspace and launch the prof's sim:"
 echo "    source install/setup.bash"
-echo "    ros2 launch kitchen_world kitchen.launch.py"
+echo "    source /home/reddy/ros2_ws/install/setup.bash    # mobile_arm_sim workspace"
+echo "    ros2 launch mobile_arm_sim autonomous.launch.py  # once Day 4 of mobile_arm_sim/PROGRESS.md lands"

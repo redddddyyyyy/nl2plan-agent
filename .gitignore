@@ -27,3 +27,8 @@ Thumbs.db
 *.pth
 *.pt
 *.onnx
+
+# AI memories
+SESSION_LOG.md
+RESUME.md
+docs/superpowers/

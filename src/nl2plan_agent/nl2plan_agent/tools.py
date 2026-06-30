@@ -103,10 +103,16 @@ class MockBackend:
 
 
 class Ros2Backend:
-    """Real backend. Requires rclpy and a running ROS2 graph.
+    """Real backend targeting the mobile_arm_sim robot + Nav2.
 
-    The actual service calls are filled in on the Linux side. This class
-    fails fast on Windows so tests stay deterministic.
+    Wiring targets (filled in during Phase 2):
+      * navigate_to -> Nav2 NavigateToPose action client on /navigate_to_pose
+      * find_object -> subscribe to /target_block_pose (block_detector.py output);
+        upgrade to GroundingDINO publishing the same topic later
+      * pick / place -> JointGroupPositionController commands on /arm_controller
+        and /gripper_controller, mirroring mobile_arm_sim/scripts/pick_and_place.py
+
+    Fails fast off-Linux so tests stay deterministic.
     """
 
     def __init__(self) -> None:
@@ -118,16 +124,16 @@ class Ros2Backend:
             ) from e
 
     def navigate_to(self, target_name: Optional[str], pose: Optional[dict]) -> dict:
-        raise NotImplementedError("Wire up to /nl2plan/navigate_to ROS2 service on Linux.")
+        raise NotImplementedError("Wire to Nav2 NavigateToPose action on /navigate_to_pose.")
 
     def find_object(self, description: str) -> dict:
-        raise NotImplementedError("Wire up to /nl2plan/find_object ROS2 service on Linux.")
+        raise NotImplementedError("Wire to /target_block_pose from block_detector (later GroundingDINO).")
 
     def pick(self, object_id: str) -> dict:
-        raise NotImplementedError("Wire up to /nl2plan/pick ROS2 service on Linux.")
+        raise NotImplementedError("Wire to arm_controller + gripper_controller (see pick_and_place.py).")
 
     def place(self, pose: Optional[dict]) -> dict:
-        raise NotImplementedError("Wire up to /nl2plan/place ROS2 service on Linux.")
+        raise NotImplementedError("Wire to arm_controller + gripper_controller (see pick_and_place.py).")
 
 
 @dataclass

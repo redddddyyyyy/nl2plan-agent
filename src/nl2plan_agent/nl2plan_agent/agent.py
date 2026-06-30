@@ -88,6 +88,8 @@ class Agent:
                 return self._finalize(messages, step, start, "error", f"Chat call failed: {exc!r}")
 
             assistant_msg = response["message"]
+            if hasattr(assistant_msg, "model_dump"):
+                assistant_msg = assistant_msg.model_dump()
             messages.append(assistant_msg)
             self._log({"kind": "assistant", "content": assistant_msg.get("content", ""),
                        "tool_calls": assistant_msg.get("tool_calls", [])})
