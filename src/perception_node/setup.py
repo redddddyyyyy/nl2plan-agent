@@ -9,16 +9,17 @@ setup(
     data_files=[
         ("share/ament_index/resource_index/packages", ["resource/" + package_name]),
         ("share/" + package_name, ["package.xml"]),
+        ("share/" + package_name + "/launch", ["launch/nl2plan_sim.launch.py"]),
     ],
     install_requires=["setuptools"],
     zip_safe=True,
     maintainer="Rajeev Reddy",
     maintainer_email="rajeevreddy1009@gmail.com",
-    description="GroundingDINO open-vocabulary detector + RGB-D to 3D pose.",
+    description="HSV block detector: one map-frame pose topic per block color.",
     license="MIT",
     entry_points={
         "console_scripts": [
-            "perception = perception_node.perception:main",
+            "color_block_detector = perception_node.color_block_detector:main",
         ],
     },
 )

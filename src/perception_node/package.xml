@@ -2,7 +2,7 @@
 <package format="3">
   <name>perception_node</name>
   <version>0.1.0</version>
-  <description>GroundingDINO open-vocabulary detector + RGB-D to 3D pose.</description>
+  <description>HSV block detector: one map-frame pose topic per block color.</description>
   <maintainer email="rajeevreddy1009@gmail.com">Rajeev Reddy</maintainer>
   <license>MIT</license>
 
