@@ -1,18 +1,32 @@
-# Named-pose lookup for the agent.
-# x and y in meters, theta in radians (world frame).
-# These must match the layout in src/kitchen_world/worlds/kitchen.world.
+# Named-pose lookup for the agent. Map frame of mobile_arm_sim's
+# aws-small-house map; x and y in meters, theta in radians.
+#
+# north_room / hallway / west_room are open-floor search spots with room to
+# spin — the same ones the sim's scripted mission patrols. table is a
+# standoff north of the drop table at (4.0, -2.5), facing it; place() drives
+# the last stretch by touch.
 
-start:
-  x: 0.0
-  y: 0.0
-  theta: 0.0
+home:
+  x: 4.3
+  y: -1.5
+  theta: 3.1416
 
-kitchen:
-  x: 5.0
+north_room:
+  x: 0.7
   y: 2.0
   theta: 0.0
 
-table:
-  x: 5.5
-  y: 2.5
+hallway:
+  x: -1.5
+  y: -0.3
   theta: 0.0
+
+west_room:
+  x: -6.9
+  y: -0.1
+  theta: 0.0
+
+table:
+  x: 4.0
+  y: -1.75
+  theta: -1.5708

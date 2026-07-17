@@ -105,35 +105,31 @@ class MockBackend:
 class Ros2Backend:
     """Real backend targeting the mobile_arm_sim robot + Nav2.
 
-    Wiring targets (filled in during Phase 2):
-      * navigate_to -> Nav2 NavigateToPose action client on /navigate_to_pose
-      * find_object -> subscribe to /target_block_pose (block_detector.py output);
-        upgrade to GroundingDINO publishing the same topic later
-      * pick / place -> JointGroupPositionController commands on /arm_controller
-        and /gripper_controller, mirroring mobile_arm_sim/scripts/pick_and_place.py
-
-    Fails fast off-Linux so tests stay deterministic.
+    Thin delegate: the actual node, Nav2 client, scan, and arm sequences
+    live in the ros_backend package. Imports are deferred so this module
+    stays importable (and the test suite green) without rclpy.
     """
 
     def __init__(self) -> None:
         try:
-            import rclpy  # noqa: F401  (lazy import; raises if not installed)
+            from .ros_backend.backend import RosBackend
         except ImportError as e:
             raise RuntimeError(
                 "Ros2Backend requires rclpy. Run on Linux with ROS2 Humble sourced."
             ) from e
+        self._impl = RosBackend()
 
     def navigate_to(self, target_name: Optional[str], pose: Optional[dict]) -> dict:
-        raise NotImplementedError("Wire to Nav2 NavigateToPose action on /navigate_to_pose.")
+        return self._impl.navigate_to(target_name, pose)
 
     def find_object(self, description: str) -> dict:
-        raise NotImplementedError("Wire to /target_block_pose from block_detector (later GroundingDINO).")
+        return self._impl.find_object(description)
 
     def pick(self, object_id: str) -> dict:
-        raise NotImplementedError("Wire to arm_controller + gripper_controller (see pick_and_place.py).")
+        return self._impl.pick(object_id)
 
     def place(self, pose: Optional[dict]) -> dict:
-        raise NotImplementedError("Wire to arm_controller + gripper_controller (see pick_and_place.py).")
+        return self._impl.place(pose)
 
 
 @dataclass
