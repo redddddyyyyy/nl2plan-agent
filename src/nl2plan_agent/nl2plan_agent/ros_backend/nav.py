@@ -12,7 +12,8 @@ from nav2_msgs.action import NavigateToPose
 from .logic import nav_result
 
 ACTIVE_WAIT_S = 30.0
-NAV_TIMEOUT_S = 120.0
+NAV_TIMEOUT_S = 240.0   # cross-house routes grind through recovery behaviors
+                        # in the tight doorways; 120 s cut them off mid-recovery
 
 
 def wait_nav_active(node, timeout: float = ACTIVE_WAIT_S) -> Optional[str]:

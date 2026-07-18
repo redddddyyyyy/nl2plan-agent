@@ -12,8 +12,10 @@ from typing import Optional
 
 from ..named_poses import load_named_poses
 from . import manipulation, nav, perception
-from .logic import COLOR_ENTITIES, parse_color
+from .logic import COLOR_ENTITIES, parse_color, standoff_pose
 from .node import get_node
+
+REFINE_STANDOFF = 0.6   # m: outside the 0.45 m blind zone, prime viewing
 
 _DEFAULT_POSES = Path(__file__).resolve().parents[4] / "config" / "named_poses.yaml"
 
@@ -97,6 +99,32 @@ class RosBackend:
                 return {"success": False,
                         "error": "The robot has moved away since that sighting; "
                                  "run find_object again from here."}
+        # Approach in three stages: Nav2 drives to a standoff (it plans
+        # around furniture — a blind creep from the search pose rammed a
+        # stool), the block is re-confirmed dead-ahead (search-scan
+        # sightings carry ~0.2 m of oblique-angle error), and only the
+        # last fraction of a meter is creeped on odometry.
+        if node.robot is None:
+            return {"success": False,
+                    "error": "No localization yet. Is the sim running?"}
+        rx, ry, _ = node.robot
+        far = ((rx - det["x"]) ** 2 + (ry - det["y"]) ** 2) ** 0.5
+        if far > REFINE_STANDOFF + 0.15:
+            gx, gy, yaw = standoff_pose(rx, ry, det["x"], det["y"],
+                                        REFINE_STANDOFF)
+            r = nav.navigate(node, gx, gy, yaw)
+            if not r.get("success"):
+                return {"success": False,
+                        "error": f"Could not approach the {det['color']} "
+                                 f"block: {r['error']}"}
+        else:
+            err = manipulation.align(node, det["x"], det["y"], far)
+            if err is not None:
+                return {"success": False, "error": err}
+        fresh = perception.confirm_here(node, det["color"])
+        if fresh is not None:
+            det = {**det, "x": fresh["x"], "y": fresh["y"]}
+            self._last_detection = det
         err = manipulation.align(node, det["x"], det["y"],
                                  manipulation.GRASP_REACH)
         if err is not None:

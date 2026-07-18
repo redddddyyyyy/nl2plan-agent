@@ -64,3 +64,15 @@ def nav_result(status: int, duration_s: float, final_pose: dict) -> dict:
     name = _STATUS_NAMES.get(status, f"status {status}")
     return {"success": False,
             "error": f"Navigation {name} before reaching the goal."}
+
+
+def standoff_pose(rx: float, ry: float, tx: float, ty: float,
+                  standoff: float) -> tuple[float, float, float]:
+    """Nav goal `standoff` meters from target (tx, ty), approached from the
+    robot's side, facing the target. Approach legs belong to Nav2 — a blind
+    creep from the search pose rammed a stool that sat between the robot
+    and the block."""
+    ang = math.atan2(ry - ty, rx - tx)
+    gx = tx + standoff * math.cos(ang)
+    gy = ty + standoff * math.sin(ang)
+    return gx, gy, math.atan2(ty - gy, tx - gx)

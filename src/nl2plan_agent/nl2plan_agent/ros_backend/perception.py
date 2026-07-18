@@ -23,6 +23,13 @@ SETTLE_S = 1.0       # let AMCL settle after stopping before trusting anything
 CONFIRM_WINDOW_S = 5.0
 MIN_SAMPLES = 4
 MAX_SPREAD_M = 0.2
+# Two blocks cannot share a spot. Orange announces itself with a huge fully
+# saturated blob at its true position, while its antialiased rim sheds
+# pixels into every brown band worth trying — three rounds of band tuning
+# all lost to it. A "brown" cluster sitting on a fresh orange detection IS
+# the orange block; reject it and keep scanning.
+CROSS_VETO_M = 0.35
+CROSS_VETO_FRESH_S = 3.0
 # Plausibility band for a confirmed cluster's distance from the robot. The
 # camera can't see the floor inside 0.45 m, and every search pose puts a
 # real block 0.9 m out at most. Elevated red decals (the west-room bin's
@@ -62,12 +69,26 @@ def _confirm(node, color: str) -> Optional[dict]:
                                 # Off the plausible floor band: a decal or
                                 # reflection, not a block. Keep scanning.
                                 return None
+                        if _stolen_by_orange(node, color, x, y):
+                            return None
                         return {"x": x, "y": y}
                     # Four sightings scattered past 20 cm are not a parked
                     # 5 cm cube — a phantom, not the block.
                     return None
         time.sleep(0.1)
     return None
+
+
+def _stolen_by_orange(node, color: str, x: float, y: float) -> bool:
+    """True when a brown cluster coincides with a live orange sighting."""
+    if color != "brown":
+        return False
+    om = node.blocks.get("orange")
+    age = node.block_age("orange")
+    if om is None or age is None or age > CROSS_VETO_FRESH_S:
+        return False
+    p = om.pose.position
+    return math.hypot(x - p.x, y - p.y) < CROSS_VETO_M
 
 
 def scan_for(node, color: str) -> Optional[dict]:
@@ -92,3 +113,13 @@ def scan_for(node, color: str) -> Optional[dict]:
             # Sighting didn't hold up — keep spinning out the revolution.
     node.stop_base()
     return None
+
+
+def confirm_here(node, color):
+    """Stationary re-confirm from the current pose; refined {'x','y'} or None.
+
+    Used by pick at its standoff: a sighting made during the search scan can
+    carry ~0.2 m of oblique-angle projection error, which the blind creep
+    would faithfully reproduce. Dead-ahead at ~0.6 m the error collapses.
+    """
+    return _confirm(node, color)

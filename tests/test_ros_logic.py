@@ -74,3 +74,15 @@ def test_nav_result_unknown_status():
     out = nav_result(99, 5.0, {})
     assert out["success"] is False
     assert "99" in out["error"]
+
+
+def test_standoff_pose_between_robot_and_target():
+    from nl2plan_agent.ros_backend.logic import standoff_pose
+    import math
+    # robot due south of target: goal sits 0.6 m south of target, facing north
+    gx, gy, yaw = standoff_pose(0.0, 0.0, 0.0, 2.0, 0.6)
+    assert abs(gx) < 1e-9 and abs(gy - 1.4) < 1e-9
+    assert abs(yaw - math.pi / 2) < 1e-6
+    # goal is always `standoff` from the target, on the robot's side
+    gx, gy, yaw = standoff_pose(3.0, -1.0, 1.0, 1.0, 0.5)
+    assert abs(math.hypot(gx - 1.0, gy - 1.0) - 0.5) < 1e-9
