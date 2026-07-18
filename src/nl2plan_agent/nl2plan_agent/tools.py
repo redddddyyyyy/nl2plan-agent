@@ -47,14 +47,14 @@ class MockWorld:
         "gym": {"x": -5.77, "y": -3.17, "theta": -2.36},
         "bedroom": {"x": -6.9, "y": -0.1, "theta": 3.1416},
         "bedroom_window": {"x": -4.5, "y": 1.4, "theta": 1.5708},
-        "dining": {"x": -1.7, "y": 5.1, "theta": -0.14},
+        "lounge": {"x": 1.8, "y": 4.2, "theta": 0.0},
         "table": {"x": 4.0, "y": -1.75, "theta": -1.5708},
     })
     objects: dict = field(default_factory=lambda: {
         "red block": {"x": -7.6, "y": -0.1, "theta": 0.0},
         "orange block": {"x": -4.5, "y": 2.1, "theta": 0.0},
         "magenta block": {"x": -6.3, "y": -3.7, "theta": 0.0},
-        "brown block": {"x": -1.0, "y": 5.0, "theta": 0.0},
+        "brown block": {"x": 2.6, "y": 4.2, "theta": 0.0},
     })
     blocked_paths: set = field(default_factory=set)
 

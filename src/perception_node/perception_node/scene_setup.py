@@ -5,7 +5,8 @@ They spawn clustered in mobile_arm_sim's launch, and brown-vs-orange is a
 pair the camera genuinely confuses up close (same hue; orange's antialiased
 rim sheds brown-band pixels). Rather than edit the sim repo, teleport each
 block to its own room after it spawns: magenta on the gym mat, red and
-orange at opposite ends of the bedroom, brown behind the dining table.
+orange at opposite ends of the bedroom, brown on the living-room mat
+by the blue ball.
 World-frame placement is fine here — scene setup, not the carried-block pin.
 """
 
@@ -18,7 +19,7 @@ BLOCK_XY = {
     'target_block': (-7.6, -0.1),        # red: bedroom, south end
     'distractor_orange': (-4.5, 2.1),    # bedroom, window end (map-checked clear of the bed)
     'distractor_magenta': (-6.3, -3.7),  # gym mat
-    'distractor_brown': (-1.0, 5.0),     # behind the dining table, clear of the balcony set
+    'distractor_brown': (2.6, 4.2),      # living-room mat, next to the blue ball
 }
 
 

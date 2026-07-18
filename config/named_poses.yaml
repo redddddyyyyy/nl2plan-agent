@@ -25,10 +25,10 @@ bedroom_window:
   y: 1.4
   theta: 1.5708
 
-dining:
-  x: -1.7
-  y: 5.1
-  theta: -0.14
+lounge:
+  x: 1.8
+  y: 4.2
+  theta: 0.0
 
 table:
   x: 4.0
