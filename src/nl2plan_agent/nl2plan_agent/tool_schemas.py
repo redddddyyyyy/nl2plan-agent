@@ -24,7 +24,7 @@ NAVIGATE_TO = {
         "name": "navigate_to",
         "description": (
             "Drive the robot base to a named location or absolute pose. "
-            "Use a named target ('kitchen', 'start', 'table') when one is appropriate; "
+            "Use a named target ('home', 'north_room', 'hallway', 'west_room', 'table') when one is appropriate; "
             "otherwise provide an explicit pose. Returns success and the final pose."
         ),
         "parameters": {
@@ -34,7 +34,7 @@ NAVIGATE_TO = {
                     "type": "string",
                     "description": (
                         "Named location from the world map. "
-                        "One of: kitchen, start, table. Mutually exclusive with pose."
+                        "One of: home, north_room, hallway, west_room, table. Mutually exclusive with pose."
                     ),
                 },
                 "pose": {
@@ -63,7 +63,7 @@ FIND_OBJECT = {
                 "description": {
                     "type": "string",
                     "description": (
-                        "Natural-language description, e.g. 'red mug', 'blue cup'. "
+                        "Natural-language description, e.g. 'red block', 'magenta block'. "
                         "Be specific about color and shape; the detector is open-vocabulary."
                     ),
                 },

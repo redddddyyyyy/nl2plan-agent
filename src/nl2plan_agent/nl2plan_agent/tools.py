@@ -25,6 +25,7 @@ except ImportError:  # pragma: no cover
     def repair_json(s: str) -> str:
         return s
 
+from .ros_backend.logic import parse_color
 from .tool_schemas import TOOLS_BY_NAME
 
 
@@ -37,17 +38,22 @@ class ToolBackend(Protocol):
 
 @dataclass
 class MockWorld:
-    """A toy world used by MockBackend for tests and offline dry runs."""
+    """A toy world mirroring the live aws-small-house scene."""
 
-    robot_pose: dict = field(default_factory=lambda: {"x": 0.0, "y": 0.0, "theta": 0.0})
+    robot_pose: dict = field(default_factory=lambda: {"x": 4.5, "y": -1.5, "theta": 3.1416})
     holding: Optional[str] = None
     named_poses: dict = field(default_factory=lambda: {
-        "start": {"x": 0.0, "y": 0.0, "theta": 0.0},
-        "kitchen": {"x": 5.0, "y": 2.0, "theta": 0.0},
-        "table": {"x": 5.5, "y": 2.5, "theta": 0.0},
+        "home": {"x": 4.3, "y": -1.5, "theta": 3.1416},
+        "north_room": {"x": 0.7, "y": 2.0, "theta": 0.0},
+        "hallway": {"x": -1.5, "y": -0.3, "theta": 0.0},
+        "west_room": {"x": -6.9, "y": -0.1, "theta": 0.0},
+        "table": {"x": 4.0, "y": -1.75, "theta": -1.5708},
     })
     objects: dict = field(default_factory=lambda: {
-        "red mug": {"x": 5.5, "y": 2.7, "theta": 0.0},
+        "red block": {"x": -7.6, "y": -0.1, "theta": 0.0},
+        "orange block": {"x": 1.4, "y": 2.4, "theta": 0.0},
+        "magenta block": {"x": -2.2, "y": -0.8, "theta": 0.0},
+        "brown block": {"x": 0.7, "y": 2.7, "theta": 0.0},
     })
     blocked_paths: set = field(default_factory=set)
 
@@ -73,7 +79,8 @@ class MockBackend:
         return {"success": True, "final_pose": dict(resolved), "duration_s": 1.0}
 
     def find_object(self, description: str) -> dict:
-        match = self.world.objects.get(description.lower().strip())
+        color = parse_color(description)
+        match = self.world.objects.get(f"{color} block") if color else None
         if match is None:
             return {"found": False, "error": f"No object matching '{description}' visible."}
         rp = self.world.robot_pose

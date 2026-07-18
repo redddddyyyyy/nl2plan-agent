@@ -37,7 +37,6 @@ NL2Plan agent/
   src/
     nl2plan_agent/       agent orchestrator + tool dispatcher + Streamlit sidebar
     perception_node/     wraps the perception topic the agent's find_object reads
-    manipulation_node/   wraps arm + gripper controllers for pick/place
   config/named_poses.yaml
   scripts/setup_linux.sh
   tests/test_agent.py    runs unchanged on Windows or Linux (MockBackend, no ROS2)

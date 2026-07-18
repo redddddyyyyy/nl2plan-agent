@@ -39,36 +39,29 @@ def make_fake_chat(scripted: List[dict]) -> "callable":
 
 def test_happy_path_full_pick_and_place():
     scripted = [
-        # Step 1: navigate to table
         {"role": "assistant", "content": "",
          "tool_calls": [{"function": {"name": "navigate_to",
-                                       "arguments": {"target_name": "table"}}}]},
-        # Step 2: find the red mug
+                                       "arguments": {"target_name": "west_room"}}}]},
         {"role": "assistant", "content": "",
          "tool_calls": [{"function": {"name": "find_object",
-                                       "arguments": {"description": "red mug"}}}]},
-        # Step 3: pick. We don't know the object_id yet, so the test uses a hardcoded
-        # one that MockBackend will accept (any "obj_*" id passes the validity check).
+                                       "arguments": {"description": "red block"}}}]},
         {"role": "assistant", "content": "",
          "tool_calls": [{"function": {"name": "pick",
                                        "arguments": {"object_id": "obj_0001"}}}]},
-        # Step 4: navigate back
         {"role": "assistant", "content": "",
          "tool_calls": [{"function": {"name": "navigate_to",
-                                       "arguments": {"target_name": "start"}}}]},
-        # Step 5: place
+                                       "arguments": {"target_name": "table"}}}]},
         {"role": "assistant", "content": "",
          "tool_calls": [{"function": {"name": "place",
                                        "arguments": {}}}]},
-        # Step 6: final answer
-        {"role": "assistant", "content": "Brought the red mug back."},
+        {"role": "assistant", "content": "Put the red block on the table."},
     ]
     dispatcher = ToolDispatcher(MockBackend())
     agent = Agent(dispatcher, AgentConfig(model="test"), chat_fn=make_fake_chat(scripted))
-    result = agent.run("pick up the red mug and bring it back")
+    result = agent.run("pick up the red block and put it on the table")
 
     assert result.stopped_reason == "completed"
-    assert "red mug" in result.final_message.lower()
+    assert "red block" in result.final_message.lower()
     assert result.steps_taken == 6
 
 
@@ -79,12 +72,12 @@ def test_malformed_json_args_are_repaired():
     scripted = [
         {"role": "assistant", "content": "",
          "tool_calls": [{"function": {"name": "navigate_to",
-                                       "arguments": '{"target_name": "kitchen"'}}]},
+                                       "arguments": '{"target_name": "hallway"'}}]},
         {"role": "assistant", "content": "Done."},
     ]
     dispatcher = ToolDispatcher(MockBackend())
     agent = Agent(dispatcher, AgentConfig(model="test"), chat_fn=make_fake_chat(scripted))
-    result = agent.run("go to the kitchen")
+    result = agent.run("go to the hallway")
 
     assert result.stopped_reason == "completed"
     # The tool call ran successfully despite malformed args.
@@ -99,13 +92,13 @@ def test_invalid_args_produce_structured_error():
     scripted = [
         {"role": "assistant", "content": "",
          "tool_calls": [{"function": {"name": "navigate_to",
-                                       "arguments": {"target_name": "kitchen",
+                                       "arguments": {"target_name": "hallway",
                                                      "rocket_fuel": True}}}]},
         {"role": "assistant", "content": "Reported error."},
     ]
     dispatcher = ToolDispatcher(MockBackend())
     agent = Agent(dispatcher, AgentConfig(model="test"), chat_fn=make_fake_chat(scripted))
-    result = agent.run("go to the kitchen")
+    result = agent.run("go to the hallway")
 
     tool_msg = [m for m in result.messages if m["role"] == "tool"][0]
     assert "schema" in tool_msg["content"].lower()
@@ -115,22 +108,22 @@ def test_invalid_args_produce_structured_error():
 
 def test_tool_failure_then_recovery():
     world = MockWorld()
-    world.blocked_paths.add("kitchen")
+    world.blocked_paths.add("west_room")
 
     scripted = [
-        # First attempt: kitchen path blocked
+        # First attempt: west_room path blocked
         {"role": "assistant", "content": "",
          "tool_calls": [{"function": {"name": "navigate_to",
-                                       "arguments": {"target_name": "kitchen"}}}]},
-        # Recovery: try the table instead
-        {"role": "assistant", "content": "Kitchen blocked, trying the table.",
+                                       "arguments": {"target_name": "west_room"}}}]},
+        # Recovery: try the hallway instead
+        {"role": "assistant", "content": "West room blocked, trying the hallway.",
          "tool_calls": [{"function": {"name": "navigate_to",
-                                       "arguments": {"target_name": "table"}}}]},
-        {"role": "assistant", "content": "Arrived at the table."},
+                                       "arguments": {"target_name": "hallway"}}}]},
+        {"role": "assistant", "content": "Arrived in the hallway."},
     ]
     dispatcher = ToolDispatcher(MockBackend(world))
     agent = Agent(dispatcher, AgentConfig(model="test"), chat_fn=make_fake_chat(scripted))
-    result = agent.run("go to the kitchen")
+    result = agent.run("go to the west room")
 
     assert result.stopped_reason == "completed"
     import json as _json
@@ -163,16 +156,15 @@ def test_step_cap_terminates_runaway_loop():
 
 def test_mock_backend_navigate_and_find_and_pick():
     backend = MockBackend()
-    # find_object before driving close to it should fail (distance > 2.0)
-    assert backend.find_object("red mug")["found"] is False
-    # Drive to the table, then we should see the mug
-    assert backend.navigate_to("table", None)["success"] is True
-    res = backend.find_object("red mug")
+    # find_object before driving close should fail (distance > 2.0)
+    assert backend.find_object("red block")["found"] is False
+    # An unknown color is a structured miss, not a crash
+    assert backend.find_object("blue block")["found"] is False
+    # Drive to the west room, then the red block is in range
+    assert backend.navigate_to("west_room", None)["success"] is True
+    res = backend.find_object("the red block")
     assert res["found"] is True
     assert res["confidence"] > 0.5
-    # Pick the found object
     assert backend.pick(res["object_id"])["success"] is True
-    # Can't pick again while holding
     assert backend.pick(res["object_id"])["success"] is False
-    # Place releases
     assert backend.place(None)["success"] is True
