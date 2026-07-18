@@ -41,20 +41,27 @@ def color_mask(hsv, bands):
     return mask
 
 
-def largest_blob_centroid(mask, min_area=MIN_AREA):
-    """Centroid (u, v, area) of the biggest contour, or None."""
+def blob_candidates(mask, min_area=MIN_AREA):
+    """Centroids (u, v, area) of every contour >= min_area, biggest first.
+
+    The biggest blob is not always the block: the house itself is full of
+    block-colored pixels — the wood floor and furniture out-brown the brown
+    block from most viewpoints, and a furniture contour winning largest-blob
+    starved the brown block of detections entirely. Offer every candidate;
+    the size-distance gate downstream decides which one is a block.
+    """
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL,
                                    cv2.CHAIN_APPROX_SIMPLE)
-    if not contours:
-        return None
-    best = max(contours, key=cv2.contourArea)
-    area = cv2.contourArea(best)
-    if area < min_area:
-        return None
-    m = cv2.moments(best)
-    if m['m00'] == 0:
-        return None
-    return m['m10'] / m['m00'], m['m01'] / m['m00'], area
+    out = []
+    for c in sorted(contours, key=cv2.contourArea, reverse=True):
+        area = cv2.contourArea(c)
+        if area < min_area:
+            break
+        m = cv2.moments(c)
+        if m['m00'] == 0:
+            continue
+        out.append((m['m10'] / m['m00'], m['m01'] / m['m00'], area))
+    return out
 
 
 def pixel_to_ground(u, v, K, R_mo, t_mo, ground_z=GROUND_Z):
@@ -140,31 +147,31 @@ class ColorBlockDetector(Node):
         min_area = self.get_parameter('min_area').value
 
         for color, bands in COLOR_BANDS.items():
-            hit = largest_blob_centroid(color_mask(hsv, bands), min_area)
-            if hit is None:
-                continue
-            u, v, area = hit
-            p_map = pixel_to_ground(u, v, self._K, R_mo, t_mo)
-            if p_map is None:
-                continue
-            # Size-distance consistency: a 5 cm cube at the projected
-            # distance has a predictable pixel area. This is what stops the
-            # orange chairs and the wood floor being called blocks.
-            dist = float(np.linalg.norm(p_map - t_mo))
-            if not self._block_sized(area, dist):
-                continue
-            pose = PoseStamped()
-            pose.header.stamp = msg.header.stamp
-            pose.header.frame_id = 'map'
-            pose.pose.position.x = float(p_map[0])
-            pose.pose.position.y = float(p_map[1])
-            pose.pose.position.z = GROUND_Z
-            pose.pose.orientation.w = 1.0
-            self._pubs[color].publish(pose)
-            self.get_logger().info(
-                f'{color} block at map ({p_map[0]:.2f}, {p_map[1]:.2f}), '
-                f'{area:.0f} px^2 at {dist:.2f} m',
-                throttle_duration_sec=2.0)
+            for u, v, area in blob_candidates(color_mask(hsv, bands), min_area):
+                p_map = pixel_to_ground(u, v, self._K, R_mo, t_mo)
+                if p_map is None:
+                    continue
+                # Size-distance consistency: a 5 cm cube at the projected
+                # distance has a predictable pixel area. This is what stops
+                # the orange chairs and the wood floor being called blocks —
+                # and why candidates get tried in turn rather than only the
+                # biggest one.
+                dist = float(np.linalg.norm(p_map - t_mo))
+                if not self._block_sized(area, dist):
+                    continue
+                pose = PoseStamped()
+                pose.header.stamp = msg.header.stamp
+                pose.header.frame_id = 'map'
+                pose.pose.position.x = float(p_map[0])
+                pose.pose.position.y = float(p_map[1])
+                pose.pose.position.z = GROUND_Z
+                pose.pose.orientation.w = 1.0
+                self._pubs[color].publish(pose)
+                self.get_logger().info(
+                    f'{color} block at map ({p_map[0]:.2f}, {p_map[1]:.2f}), '
+                    f'{area:.0f} px^2 at {dist:.2f} m',
+                    throttle_duration_sec=2.0)
+                break
 
     def _camera_pose(self, stamp):
         """(R, t) taking optical-frame points to map, or None.
