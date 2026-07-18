@@ -25,4 +25,10 @@ def generate_launch_description():
         parameters=[{'use_sim_time': True}],
         additional_env={'PYTHONNOUSERSITE': '1'},
     )
-    return LaunchDescription([sim, detector])
+    mover = Node(
+        package='perception_node',
+        executable='scene_setup',
+        output='screen',
+        parameters=[{'use_sim_time': True}],
+    )
+    return LaunchDescription([sim, detector, mover])

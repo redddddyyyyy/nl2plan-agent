@@ -41,7 +41,7 @@ def test_happy_path_full_pick_and_place():
     scripted = [
         {"role": "assistant", "content": "",
          "tool_calls": [{"function": {"name": "navigate_to",
-                                       "arguments": {"target_name": "west_room"}}}]},
+                                       "arguments": {"target_name": "bedroom"}}}]},
         {"role": "assistant", "content": "",
          "tool_calls": [{"function": {"name": "find_object",
                                        "arguments": {"description": "red block"}}}]},
@@ -72,12 +72,12 @@ def test_malformed_json_args_are_repaired():
     scripted = [
         {"role": "assistant", "content": "",
          "tool_calls": [{"function": {"name": "navigate_to",
-                                       "arguments": '{"target_name": "hallway"'}}]},
+                                       "arguments": '{"target_name": "gym"'}}]},
         {"role": "assistant", "content": "Done."},
     ]
     dispatcher = ToolDispatcher(MockBackend())
     agent = Agent(dispatcher, AgentConfig(model="test"), chat_fn=make_fake_chat(scripted))
-    result = agent.run("go to the hallway")
+    result = agent.run("go to the gym")
 
     assert result.stopped_reason == "completed"
     # The tool call ran successfully despite malformed args.
@@ -98,7 +98,7 @@ def test_invalid_args_produce_structured_error():
     ]
     dispatcher = ToolDispatcher(MockBackend())
     agent = Agent(dispatcher, AgentConfig(model="test"), chat_fn=make_fake_chat(scripted))
-    result = agent.run("go to the hallway")
+    result = agent.run("go to the gym")
 
     tool_msg = [m for m in result.messages if m["role"] == "tool"][0]
     assert "schema" in tool_msg["content"].lower()
@@ -108,22 +108,22 @@ def test_invalid_args_produce_structured_error():
 
 def test_tool_failure_then_recovery():
     world = MockWorld()
-    world.blocked_paths.add("west_room")
+    world.blocked_paths.add("bedroom")
 
     scripted = [
         # First attempt: west_room path blocked
         {"role": "assistant", "content": "",
          "tool_calls": [{"function": {"name": "navigate_to",
-                                       "arguments": {"target_name": "west_room"}}}]},
+                                       "arguments": {"target_name": "bedroom"}}}]},
         # Recovery: try the hallway instead
-        {"role": "assistant", "content": "West room blocked, trying the hallway.",
+        {"role": "assistant", "content": "Bedroom blocked, trying the gym.",
          "tool_calls": [{"function": {"name": "navigate_to",
-                                       "arguments": {"target_name": "hallway"}}}]},
+                                       "arguments": {"target_name": "gym"}}}]},
         {"role": "assistant", "content": "Arrived in the hallway."},
     ]
     dispatcher = ToolDispatcher(MockBackend(world))
     agent = Agent(dispatcher, AgentConfig(model="test"), chat_fn=make_fake_chat(scripted))
-    result = agent.run("go to the west room")
+    result = agent.run("go to the bedroom")
 
     assert result.stopped_reason == "completed"
     import json as _json
@@ -161,7 +161,7 @@ def test_mock_backend_navigate_and_find_and_pick():
     # An unknown color is a structured miss, not a crash
     assert backend.find_object("blue block")["found"] is False
     # Drive to the west room, then the red block is in range
-    assert backend.navigate_to("west_room", None)["success"] is True
+    assert backend.navigate_to("bedroom", None)["success"] is True
     res = backend.find_object("the red block")
     assert res["found"] is True
     assert res["confidence"] > 0.5

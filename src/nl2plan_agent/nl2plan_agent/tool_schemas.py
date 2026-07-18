@@ -24,7 +24,7 @@ NAVIGATE_TO = {
         "name": "navigate_to",
         "description": (
             "Drive the robot base to a named location or absolute pose. "
-            "Use a named target ('home', 'north_room', 'hallway', 'west_room', 'table') when one is appropriate; "
+            "Use a named target ('home', 'gym', 'bedroom', 'bedroom_window', 'dining', 'table') when one is appropriate; "
             "otherwise provide an explicit pose. Returns success and the final pose."
         ),
         "parameters": {
@@ -34,7 +34,7 @@ NAVIGATE_TO = {
                     "type": "string",
                     "description": (
                         "Named location from the world map. "
-                        "One of: home, north_room, hallway, west_room, table. Mutually exclusive with pose."
+                        "One of: home, gym, bedroom, bedroom_window, dining, table. Mutually exclusive with pose."
                     ),
                 },
                 "pose": {

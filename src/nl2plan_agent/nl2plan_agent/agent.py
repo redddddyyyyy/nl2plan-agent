@@ -28,8 +28,8 @@ from .tools import ToolDispatcher
 @dataclass
 class AgentConfig:
     model: str = "qwen2.5:7b-instruct"
-    max_steps: int = 12
-    max_wall_clock_s: float = 300.0
+    max_steps: int = 16
+    max_wall_clock_s: float = 600.0
     temperature: float = 0.2
 
 

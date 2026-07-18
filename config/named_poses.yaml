@@ -1,30 +1,34 @@
 # Named-pose lookup for the agent. Map frame of mobile_arm_sim's
 # aws-small-house map; x and y in meters, theta in radians.
 #
-# north_room / hallway / west_room are open-floor search spots with room to
-# spin — the same ones the sim's scripted mission patrols. table is a
-# standoff north of the drop table at (4.0, -2.5), facing it; place() drives
-# the last stretch by touch.
+# One search pose per room, each ~0.7 m from where its block sits so the
+# camera (range ~1.1 m) can confirm it. table is a standoff north of the
+# drop table at (4.0, -2.5); place() drives the last stretch by touch.
 
 home:
   x: 4.3
   y: -1.5
   theta: 3.1416
 
-north_room:
-  x: 0.7
-  y: 2.0
-  theta: 0.0
+gym:
+  x: -5.77
+  y: -3.17
+  theta: -2.36
 
-hallway:
-  x: -1.5
-  y: -0.3
-  theta: 0.0
-
-west_room:
+bedroom:
   x: -6.9
   y: -0.1
-  theta: 0.0
+  theta: 3.1416
+
+bedroom_window:
+  x: -4.5
+  y: 1.4
+  theta: 1.5708
+
+dining:
+  x: -1.7
+  y: 5.1
+  theta: -0.14
 
 table:
   x: 4.0

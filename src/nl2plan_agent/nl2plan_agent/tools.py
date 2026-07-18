@@ -44,16 +44,17 @@ class MockWorld:
     holding: Optional[str] = None
     named_poses: dict = field(default_factory=lambda: {
         "home": {"x": 4.3, "y": -1.5, "theta": 3.1416},
-        "north_room": {"x": 0.7, "y": 2.0, "theta": 0.0},
-        "hallway": {"x": -1.5, "y": -0.3, "theta": 0.0},
-        "west_room": {"x": -6.9, "y": -0.1, "theta": 0.0},
+        "gym": {"x": -5.77, "y": -3.17, "theta": -2.36},
+        "bedroom": {"x": -6.9, "y": -0.1, "theta": 3.1416},
+        "bedroom_window": {"x": -4.5, "y": 1.4, "theta": 1.5708},
+        "dining": {"x": -1.7, "y": 5.1, "theta": -0.14},
         "table": {"x": 4.0, "y": -1.75, "theta": -1.5708},
     })
     objects: dict = field(default_factory=lambda: {
         "red block": {"x": -7.6, "y": -0.1, "theta": 0.0},
-        "orange block": {"x": 1.4, "y": 2.4, "theta": 0.0},
-        "magenta block": {"x": -2.2, "y": -0.8, "theta": 0.0},
-        "brown block": {"x": 0.7, "y": 2.7, "theta": 0.0},
+        "orange block": {"x": -4.5, "y": 2.1, "theta": 0.0},
+        "magenta block": {"x": -6.3, "y": -3.7, "theta": 0.0},
+        "brown block": {"x": -1.0, "y": 5.0, "theta": 0.0},
     })
     blocked_paths: set = field(default_factory=set)
 

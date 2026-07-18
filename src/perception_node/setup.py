@@ -20,6 +20,7 @@ setup(
     entry_points={
         "console_scripts": [
             "color_block_detector = perception_node.color_block_detector:main",
+            "scene_setup = perception_node.scene_setup:main",
         ],
     },
 )
