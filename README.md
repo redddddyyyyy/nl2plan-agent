@@ -2,7 +2,7 @@
 
 Natural-language commands → structured plan → verified low-level control in simulation.
 
-A local LLM (Qwen2.5-7B via Ollama) takes a command like *"go to the red block, pick it up, and bring it back to the start"*, decomposes it into a short sequence of tool calls, and drives a Nav2 navigation stack, a perception node, and an arm controller inside Gazebo. A recovery loop re-plans when a tool call fails.
+A local LLM (Qwen2.5-7B via Ollama) takes a command like *"pick up the magenta block and put it on the table"*, decomposes it into a short sequence of tool calls, and drives a Nav2 navigation stack, a perception node, and an arm controller inside Gazebo. A recovery loop re-plans when a tool call fails.
 
 The pattern is the SayCan / PaLM-E lineage: the LLM does task-level reasoning, classical / verified components do low-level control. The point is to show LLM portfolio work that has physical grounding, not just prompt engineering.
 
@@ -55,10 +55,10 @@ The pure-Python agent + tests run on Windows (`pip install -r requirements.txt`)
 ```bash
 pip install -r requirements.txt
 ollama pull qwen2.5:7b-instruct
-python -m nl2plan_agent.agent --mock "pick up the red mug and bring it back"
+python3 -m nl2plan_agent.agent --mock "pick up the magenta block and put it on the table"
 ```
 
-The mock backend has a toy world with a "red mug" near a "kitchen" pose. You'll see the LLM decompose the command and call the tools against the mock world.
+The mock backend has a toy world with four colored blocks near the named poses. You'll see the LLM decompose the command and call the tools against the mock world.
 
 ### Full sim (Linux + ROS2 Humble + Ollama + mobile_arm_sim)
 
@@ -66,8 +66,8 @@ The mock backend has a toy world with a "red mug" near a "kitchen" pose. You'll 
 bash scripts/setup_linux.sh                                   # ROS2 deps + Python deps + colcon build
 source install/setup.bash
 source /home/reddy/ros2_ws/install/setup.bash                 # mobile_arm_sim
-ros2 launch mobile_arm_sim autonomous.launch.py               # Gazebo + Nav2 + perception (once Day 4 lands)
-python -m nl2plan_agent.agent "go to the red block and bring it back"
+ros2 launch perception_node nl2plan_sim.launch.py              # Gazebo + Nav2 + the multi-color block detector
+python -m nl2plan_agent.agent "find the red block and put it on the table"
 streamlit run src/nl2plan_agent/nl2plan_agent/sidebar_app.py  # in a second terminal
 ```
 
@@ -96,8 +96,8 @@ These are honest and meant to be visible in the README, not hidden.
 | Command | Success rate | Avg plan time | Avg execution time | Recovery rate |
 | --- | --- | --- | --- | --- |
 | `Go to the red block.` | TBD | TBD | TBD | n/a |
-| `Pick up the red block and bring it to the start.` | TBD | TBD | TBD | n/a |
-| `Bring me the red block.` (with mid-run obstacle) | TBD | TBD | TBD | TBD |
+| `Pick up the red block and put it on the table.` | TBD | TBD | TBD | n/a |
+| `Bring me the orange block.` (with mid-run obstacle) | TBD | TBD | TBD | TBD |
 
 ## Acknowledgements
 

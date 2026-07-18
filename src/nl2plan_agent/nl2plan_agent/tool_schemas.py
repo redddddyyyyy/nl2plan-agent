@@ -53,7 +53,7 @@ FIND_OBJECT = {
         "name": "find_object",
         "description": (
             "Look for an object matching a natural-language description using "
-            "the robot's RGB-D camera. Returns whether the object was found and, "
+            "the robot's camera. Returns whether the object was found and, "
             "if so, a stable object_id plus its world-frame pose. "
             "Call this before pick()."
         ),
@@ -64,7 +64,7 @@ FIND_OBJECT = {
                     "type": "string",
                     "description": (
                         "Natural-language description, e.g. 'red block', 'magenta block'. "
-                        "Be specific about color and shape; the detector is open-vocabulary."
+                        "Name the block color — one of: red, orange, magenta, brown."
                     ),
                 },
             },
@@ -101,8 +101,8 @@ PLACE = {
     "function": {
         "name": "place",
         "description": (
-            "Release the currently-held object at the given pose. "
-            "If pose is omitted, places at a default offset from the robot's current base pose."
+            "Releases the held object onto the drop table, driving the final approach itself. "
+            "Navigate to 'table' first."
         ),
         "parameters": {
             "type": "object",
