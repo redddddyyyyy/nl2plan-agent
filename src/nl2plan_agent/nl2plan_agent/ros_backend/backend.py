@@ -11,7 +11,8 @@ from pathlib import Path
 from typing import Optional
 
 from ..named_poses import load_named_poses
-from . import nav
+from . import nav, perception
+from .logic import COLOR_ENTITIES, parse_color
 from .node import get_node
 
 _DEFAULT_POSES = Path(__file__).resolve().parents[4] / "config" / "named_poses.yaml"
@@ -53,7 +54,30 @@ class RosBackend:
                             float(resolved.get("theta", 0.0)))
 
     def find_object(self, description: str) -> dict:
-        return {"found": False, "error": "find_object is not wired up yet."}
+        color = parse_color(description)
+        if color is None:
+            known = ", ".join(COLOR_ENTITIES)
+            return {"found": False,
+                    "error": f"Can't recognize a color in '{description}'. "
+                             f"I can find blocks in: {known}."}
+        hit = perception.scan_for(self._node, color)
+        if hit is None:
+            return {"found": False,
+                    "error": f"No {color} block visible from here; "
+                             "try navigating elsewhere."}
+        self._last_detection = {
+            "color": color,
+            "entity": COLOR_ENTITIES[color],
+            "object_id": f"{color}_block",
+            "x": hit["x"],
+            "y": hit["y"],
+        }
+        return {
+            "found": True,
+            "object_id": f"{color}_block",
+            "pose": {"x": hit["x"], "y": hit["y"], "theta": 0.0},
+            "confidence": 0.9,
+        }
 
     def pick(self, object_id: str) -> dict:
         return {"success": False, "error": "pick is not wired up yet."}
