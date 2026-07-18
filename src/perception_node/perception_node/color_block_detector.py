@@ -17,18 +17,26 @@ import numpy as np
 # orientation across any V split — a value threshold sent the robot to the
 # orange block on a "brown" sighting. SATURATION is what actually separates
 # them here: orange renders fully saturated (S=255), brown lands near
-# S~197, and the wood floor near S~86. Numbers are close-up masked-pixel
-# percentiles measured 2026-07-18, not guesses.
+# S~197, wooden furniture near S~152, and the wood floor near S~86 — the
+# brown band keeps a floor of 170 so the kitchen table stops publishing
+# itself as a block. Numbers are close-up masked-pixel percentiles
+# measured 2026-07-18, not guesses.
 COLOR_BANDS = {
     'red':     [((0, 120, 70), (6, 255, 255)),
                 ((174, 120, 70), (180, 255, 255))],
     'orange':  [((8, 225, 140), (22, 255, 255))],
-    'brown':   [((5, 120, 40), (22, 215, 255))],
+    'brown':   [((5, 170, 40), (22, 215, 255))],
     'magenta': [((135, 80, 70), (172, 255, 255))],
 }
 
 MIN_AREA = 400.0   # px^2 — below this it's a reflection or speckle
 GROUND_Z = 0.025   # block center height: 5 cm cube on the floor
+# Plausible projected range for a real floor block: the camera cannot see
+# the floor inside 0.45 m, and past 1.4 m a 5 cm cube is under the area
+# threshold anyway. Wall trim and furniture project outside this band and
+# used to win frames from the actual block.
+DIST_MIN = 0.45
+DIST_MAX = 1.4
 
 _KERNEL = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
 
@@ -160,6 +168,8 @@ class ColorBlockDetector(Node):
                 # and why candidates get tried in turn rather than only the
                 # biggest one.
                 dist = float(np.linalg.norm(p_map - t_mo))
+                if not (DIST_MIN <= dist <= DIST_MAX):
+                    continue
                 if not self._block_sized(area, dist):
                     continue
                 pose = PoseStamped()

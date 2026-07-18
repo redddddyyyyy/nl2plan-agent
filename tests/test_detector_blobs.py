@@ -60,11 +60,13 @@ def test_orange_brown_separate_on_saturation():
     brown_lit = (13, 197, 255)      # brown block, top face in light
     brown_shaded = (13, 199, 127)   # brown block, shaded face
     wood_floor = (20, 86, 250)
+    wood_furniture = (14, 152, 193)   # kitchen table; fooled the 120 S-floor
 
     assert _in_band(COLOR_BANDS["orange"], orange_lit)
     assert not _in_band(COLOR_BANDS["brown"], orange_lit)
     for px in (brown_lit, brown_shaded):
         assert _in_band(COLOR_BANDS["brown"], px)
         assert not _in_band(COLOR_BANDS["orange"], px)
-    assert not _in_band(COLOR_BANDS["brown"], wood_floor)
-    assert not _in_band(COLOR_BANDS["orange"], wood_floor)
+    for px in (wood_floor, wood_furniture):
+        assert not _in_band(COLOR_BANDS["brown"], px)
+        assert not _in_band(COLOR_BANDS["orange"], px)
