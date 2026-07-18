@@ -11,16 +11,19 @@ size-distance gate rejects it.
 import cv2
 import numpy as np
 
-# Red wraps around hue 0, so it takes two bands, kept tight because dark
-# orange (hue ~13) and brown (~10) sit right against the low band. Orange
-# and brown overlap in hue almost entirely; value tells them apart — the
-# SDF materials work out to V~255 vs V~115, split at 140 with slack for
-# lighting. Magenta is far from everything.
+# Red wraps around hue 0, so it takes two bands, kept tight because orange
+# and brown sit right against the low band. Orange and brown share hue
+# almost exactly (~13-17 vs ~13 measured) and brightness swings with face
+# orientation across any V split — a value threshold sent the robot to the
+# orange block on a "brown" sighting. SATURATION is what actually separates
+# them here: orange renders fully saturated (S=255), brown lands near
+# S~197, and the wood floor near S~86. Numbers are close-up masked-pixel
+# percentiles measured 2026-07-18, not guesses.
 COLOR_BANDS = {
     'red':     [((0, 120, 70), (6, 255, 255)),
                 ((174, 120, 70), (180, 255, 255))],
-    'orange':  [((8, 150, 140), (22, 255, 255))],
-    'brown':   [((5, 100, 40), (22, 255, 139))],
+    'orange':  [((8, 225, 140), (22, 255, 255))],
+    'brown':   [((5, 120, 40), (22, 215, 255))],
     'magenta': [((135, 80, 70), (172, 255, 255))],
 }
 

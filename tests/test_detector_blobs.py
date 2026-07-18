@@ -39,3 +39,32 @@ def test_tiny_speckle_excluded():
     mask = _mask_with_boxes([(300, 220, 40, 40), (10, 10, 8, 8)])
     cands = blob_candidates(mask, min_area=400)
     assert len(cands) == 1
+
+
+def _in_band(bands, hsv_px):
+    px = np.uint8([[list(hsv_px)]])
+    return any(cv2.inRange(px, np.array(lo), np.array(hi))[0, 0] == 255
+               for lo, hi in bands)
+
+
+def test_orange_brown_separate_on_saturation():
+    """Orange and brown share hue; only saturation splits them.
+
+    Pixel values below are masked-pixel medians measured in the live sim
+    (2026-07-18) after a 'brown' sighting sent the robot to the orange
+    block. Any band edit that breaks these is reintroducing that bug.
+    """
+    from perception_node.color_block_detector import COLOR_BANDS
+
+    orange_lit = (15, 255, 255)     # orange block, any face
+    brown_lit = (13, 197, 255)      # brown block, top face in light
+    brown_shaded = (13, 199, 127)   # brown block, shaded face
+    wood_floor = (20, 86, 250)
+
+    assert _in_band(COLOR_BANDS["orange"], orange_lit)
+    assert not _in_band(COLOR_BANDS["brown"], orange_lit)
+    for px in (brown_lit, brown_shaded):
+        assert _in_band(COLOR_BANDS["brown"], px)
+        assert not _in_band(COLOR_BANDS["orange"], px)
+    assert not _in_band(COLOR_BANDS["brown"], wood_floor)
+    assert not _in_band(COLOR_BANDS["orange"], wood_floor)
