@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Optional
 
 from ..named_poses import load_named_poses
-from . import nav, perception
+from . import manipulation, nav, perception
 from .logic import COLOR_ENTITIES, parse_color
 from .node import get_node
 
@@ -80,7 +80,30 @@ class RosBackend:
         }
 
     def pick(self, object_id: str) -> dict:
-        return {"success": False, "error": "pick is not wired up yet."}
+        if self._holding is not None:
+            return {"success": False,
+                    "error": f"Already holding {self._holding}. Place it first."}
+        det = self._last_detection
+        if det is None or det["object_id"] != object_id:
+            return {"success": False,
+                    "error": f"No confirmed object '{object_id}' in reach; "
+                             "run find_object first."}
+        node = self._node
+        if node.robot is not None:
+            dist = ((node.robot[0] - det["x"]) ** 2 +
+                    (node.robot[1] - det["y"]) ** 2) ** 0.5
+            if dist > manipulation.PICK_RANGE:
+                self._last_detection = None
+                return {"success": False,
+                        "error": "The robot has moved away since that sighting; "
+                                 "run find_object again from here."}
+        err = manipulation.align(node, det["x"], det["y"],
+                                 manipulation.GRASP_REACH)
+        if err is not None:
+            return {"success": False, "error": err}
+        manipulation.grasp_sequence(node, det["entity"])
+        self._holding = det["entity"]
+        return {"success": True}
 
     def place(self, pose: Optional[dict]) -> dict:
         return {"success": False, "error": "place is not wired up yet."}
