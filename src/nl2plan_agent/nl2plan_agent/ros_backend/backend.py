@@ -106,4 +106,30 @@ class RosBackend:
         return {"success": True}
 
     def place(self, pose: Optional[dict]) -> dict:
-        return {"success": False, "error": "place is not wired up yet."}
+        if self._holding is None:
+            return {"success": False,
+                    "error": "Nothing to place; not holding anything."}
+        node = self._node
+        m = manipulation
+        tx, ty = m.TABLE_XY
+        if pose is not None:
+            tx, ty = float(pose["x"]), float(pose["y"])
+        # The LLM handles coarse travel (navigate_to the table standoff);
+        # this drives the last stretch by touch — the stall guard docking
+        # against the table IS the arrival signal.
+        err = m.align(node, tx, ty, m.TABLE_REACH)
+        if err is not None:
+            return {"success": False,
+                    "error": err + " Still holding the block."}
+        entity = self._holding
+        m.run_stages(node, [
+            (lambda: node.arm(m.DROP), 3.0),
+            (lambda: node.gripper(m.GRIPPER_OPEN), 0.4),
+            (lambda: m.detach(node, entity), 1.5),
+            (lambda: node.arm(m.LIFT), 2.0),
+            (lambda: node.arm(m.REST), 2.0),
+        ])
+        m.back_away(node)
+        self._holding = None
+        self._last_detection = None
+        return {"success": True}
