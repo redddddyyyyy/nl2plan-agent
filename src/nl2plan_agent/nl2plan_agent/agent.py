@@ -31,6 +31,9 @@ class AgentConfig:
     max_steps: int = 16
     max_wall_clock_s: float = 600.0
     temperature: float = 0.2
+    # Interactive sessions accumulate history; Ollama's 4k default context
+    # silently evicts the system prompt partway through a long session.
+    num_ctx: int = 16384
 
 
 @dataclass
@@ -64,11 +67,19 @@ class Agent:
         self._chat = chat_fn or _default_chat()
         self.trace_path = trace_path
 
-    def run(self, user_command: str) -> AgentResult:
-        messages: List[dict] = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_command},
-        ]
+    def run(self, user_command: str,
+            history: Optional[List[dict]] = None) -> AgentResult:
+        """Run one command. Pass a previous result's `messages` as `history`
+        to keep the conversation - the model then remembers where blocks
+        were found and what is already on the table."""
+        if history:
+            messages: List[dict] = list(history)
+            messages.append({"role": "user", "content": user_command})
+        else:
+            messages = [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": user_command},
+            ]
         self._log({"kind": "user", "content": user_command})
 
         start = time.time()
@@ -83,7 +94,8 @@ class Agent:
                     model=self.config.model,
                     messages=messages,
                     tools=ALL_TOOLS,
-                    options={"temperature": self.config.temperature},
+                    options={"temperature": self.config.temperature,
+                             "num_ctx": self.config.num_ctx},
                     keep_alive="30m",
                 )
             except Exception as exc:
@@ -152,11 +164,17 @@ def main() -> None:  # pragma: no cover  - thin CLI wrapper
     from .tools import MockBackend
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", help="Natural-language command for the robot.")
+    parser.add_argument("command", nargs="?", default=None,
+                        help="Natural-language command for the robot.")
+    parser.add_argument("--interactive", action="store_true",
+                        help="Session mode: enter commands one after another; "
+                             "the model keeps the conversation between them.")
     parser.add_argument("--mock", action="store_true", help="Use MockBackend instead of ROS2.")
     parser.add_argument("--model", default="qwen2.5:7b-instruct")
     parser.add_argument("--trace", default="logs/agent_trace.jsonl")
     args = parser.parse_args()
+    if not args.interactive and not args.command:
+        parser.error("give a command, or use --interactive")
 
     trace_path = Path(args.trace)
     if args.mock:
@@ -166,6 +184,28 @@ def main() -> None:  # pragma: no cover  - thin CLI wrapper
         backend = Ros2Backend()
     dispatcher = ToolDispatcher(backend, trace_path=trace_path)
     agent = Agent(dispatcher, AgentConfig(model=args.model), trace_path=trace_path)
+
+    if args.interactive:
+        print("Session mode - one conversation, the robot remembers between "
+              "commands. Type a command, or 'quit' to end the session.")
+        history = None
+        while True:
+            try:
+                cmd = input("robot> ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                break
+            if not cmd:
+                continue
+            if cmd.lower() in ("quit", "exit"):
+                break
+            result = agent.run(cmd, history=history)
+            history = result.messages
+            print(f"[{result.stopped_reason}, {result.steps_taken} steps, "
+                  f"{result.duration_s:.1f}s]")
+            print(result.final_message + "\n")
+        return
+
     result = agent.run(args.command)
     print(f"\n=== Result ({result.stopped_reason}, {result.steps_taken} steps, "
           f"{result.duration_s:.1f}s) ===")
