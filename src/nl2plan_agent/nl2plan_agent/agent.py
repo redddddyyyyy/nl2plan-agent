@@ -72,6 +72,7 @@ class Agent:
         self._log({"kind": "user", "content": user_command})
 
         start = time.time()
+        nudges = 0
         for step in range(self.config.max_steps):
             if time.time() - start > self.config.max_wall_clock_s:
                 return self._finalize(messages, step, start, "time_cap",
@@ -97,8 +98,18 @@ class Agent:
 
             tool_calls = assistant_msg.get("tool_calls") or []
             if not tool_calls:
-                final = assistant_msg.get("content", "") or "(no response)"
-                return self._finalize(messages, step + 1, start, "completed", final)
+                final = (assistant_msg.get("content") or "").strip()
+                if not final and nudges < 2:
+                    # Qwen sometimes emits an empty message mid-mission; ending
+                    # the run there once abandoned a held block at the table.
+                    nudges += 1
+                    messages.append({"role": "user", "content":
+                                     "Continue the task. If it is already "
+                                     "complete, say what you did."})
+                    self._log({"kind": "nudge", "count": nudges})
+                    continue
+                return self._finalize(messages, step + 1, start, "completed",
+                                      final or "(no response)")
 
             for tc in tool_calls:
                 fn = tc.get("function", {})

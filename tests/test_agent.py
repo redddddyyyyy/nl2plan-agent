@@ -168,3 +168,37 @@ def test_mock_backend_navigate_and_find_and_pick():
     assert backend.pick(res["object_id"])["success"] is True
     assert backend.pick(res["object_id"])["success"] is False
     assert backend.place(None)["success"] is True
+
+
+# ---------- empty-reply stall guard ----------
+
+def test_empty_reply_mid_mission_gets_nudged():
+    scripted = [
+        {"role": "assistant", "content": "",
+         "tool_calls": [{"function": {"name": "navigate_to",
+                                       "arguments": {"target_name": "bedroom"}}}]},
+        {"role": "assistant", "content": ""},   # mid-mission stall: no text, no tools
+        {"role": "assistant", "content": "",
+         "tool_calls": [{"function": {"name": "find_object",
+                                       "arguments": {"description": "red block"}}}]},
+        {"role": "assistant", "content": "Found it and stopped there."},
+    ]
+    dispatcher = ToolDispatcher(MockBackend())
+    agent = Agent(dispatcher, AgentConfig(model="test"), chat_fn=make_fake_chat(scripted))
+    result = agent.run("find the red block")
+
+    assert result.stopped_reason == "completed"
+    assert result.final_message == "Found it and stopped there."
+    nudges = [m for m in result.messages
+              if m["role"] == "user" and "continue" in m["content"].lower()]
+    assert len(nudges) == 1
+
+
+def test_persistent_empty_replies_end_the_run():
+    scripted = [{"role": "assistant", "content": ""}] * 5
+    dispatcher = ToolDispatcher(MockBackend())
+    agent = Agent(dispatcher, AgentConfig(model="test"), chat_fn=make_fake_chat(scripted))
+    result = agent.run("do nothing")
+
+    assert result.stopped_reason == "completed"
+    assert result.final_message == "(no response)"
