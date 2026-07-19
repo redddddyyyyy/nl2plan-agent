@@ -1,6 +1,6 @@
 """Drive one backend tool at a time against the running sim, no LLM.
 
-    python3 -m nl2plan_agent.ros_backend.smoke navigate_to west_room
+    python3 -m nl2plan_agent.ros_backend.smoke navigate_to bedroom
     python3 -m nl2plan_agent.ros_backend.smoke navigate_to -- -6.9,-0.1,0.0
     python3 -m nl2plan_agent.ros_backend.smoke find_object "red block"
     python3 -m nl2plan_agent.ros_backend.smoke pick red_block

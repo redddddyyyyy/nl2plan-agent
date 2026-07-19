@@ -32,7 +32,7 @@ CROSS_VETO_M = 0.35
 CROSS_VETO_FRESH_S = 3.0
 # Plausibility band for a confirmed cluster's distance from the robot. The
 # camera can't see the floor inside 0.45 m, and every search pose puts a
-# real block 0.9 m out at most. Elevated red decals (the west-room bin's
+# real block 0.9 m out at most. Elevated red decals (the bedroom bin's
 # stars) break the ground-plane projection and confirm outside this band —
 # measured live 2026-07-18 before this gate existed.
 CONFIRM_DIST_MIN = 0.45
