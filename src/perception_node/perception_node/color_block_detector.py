@@ -31,11 +31,15 @@ COLOR_BANDS = {
 
 MIN_AREA = 400.0   # px^2 — below this it's a reflection or speckle
 GROUND_Z = 0.025   # block center height: 5 cm cube on the floor
-# Plausible projected range for a real floor block: the camera cannot see
-# the floor inside 0.45 m, and past 1.4 m a 5 cm cube is under the area
-# threshold anyway. Wall trim and furniture project outside this band and
-# used to win frames from the actual block.
-DIST_MIN = 0.45
+# Plausible projected range for a real floor block: past 1.4 m a 5 cm cube
+# is under the area threshold anyway, and nothing on the floor projects
+# inside 0.35 m. The floor lower bound sits BELOW the camera's true 0.45 m
+# blind edge on purpose: the ground-plane projection undershoots by about
+# 0.1 m, so a block 0.6 m out can project at 0.42 m — a 0.45 cutoff made
+# the robot blind in a ring just outside its own blind zone. The confirm
+# stage still rejects sub-0.45 m clusters (robot-frame, no undershoot),
+# which is what actually keeps the wall-trim phantom dead.
+DIST_MIN = 0.35
 DIST_MAX = 1.4
 
 _KERNEL = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
