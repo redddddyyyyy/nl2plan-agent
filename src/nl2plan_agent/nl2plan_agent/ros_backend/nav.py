@@ -11,7 +11,8 @@ from nav2_msgs.action import NavigateToPose
 
 from .logic import nav_result
 
-ACTIVE_WAIT_S = 30.0
+ACTIVE_WAIT_S = 120.0   # bringup takes 40-90 s; a 30 s wait made the first
+                        # command fail into LLM hand-wringing on fresh sims
 NAV_TIMEOUT_S = 240.0   # cross-house routes grind through recovery behaviors
                         # in the tight doorways; 120 s cut them off mid-recovery
 

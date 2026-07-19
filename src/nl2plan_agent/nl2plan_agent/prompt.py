@@ -17,6 +17,7 @@ Hard rules:
 4. After each tool call, read the result. If it failed, decide whether to retry, try a different spot, or report the failure.
 5. Never invent object_ids. Only use ids returned by find_object.
 6. When the command is satisfied, reply in plain text explaining what you did.
+7. Always respond in English.
 """
 
 FEW_SHOT_EXAMPLES = [

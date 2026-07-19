@@ -83,6 +83,7 @@ class Agent:
                     messages=messages,
                     tools=ALL_TOOLS,
                     options={"temperature": self.config.temperature},
+                    keep_alive="30m",
                 )
             except Exception as exc:
                 return self._finalize(messages, step, start, "error", f"Chat call failed: {exc!r}")
