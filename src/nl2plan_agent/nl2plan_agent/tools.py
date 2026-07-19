@@ -81,13 +81,23 @@ class MockBackend:
 
     def find_object(self, description: str) -> dict:
         color = parse_color(description)
-        match = self.world.objects.get(f"{color} block") if color else None
-        if match is None:
-            return {"found": False, "error": f"No object matching '{description}' visible."}
+        if color is None:
+            return {"found": False,
+                    "error": f"Can't recognize a color in '{description}'. "
+                             "I can find blocks in: red, orange, magenta, brown."}
+        match = self.world.objects.get(f"{color} block")
         rp = self.world.robot_pose
-        dist = ((match["x"] - rp["x"]) ** 2 + (match["y"] - rp["y"]) ** 2) ** 0.5
-        if dist > 2.0:
-            return {"found": False, "error": "Object too far; drive closer first."}
+        dist = None
+        if match is not None:
+            dist = ((match["x"] - rp["x"]) ** 2 + (match["y"] - rp["y"]) ** 2) ** 0.5
+        if match is not None:
+            self._last_found_key = f"{color} block"
+        if match is None or dist > 2.0:
+            # Same wording as the live backend: steer the model to another
+            # room, never into inching toward an out-of-range block.
+            return {"found": False,
+                    "error": f"No {color} block visible from here; "
+                             "try navigating elsewhere."}
         return {
             "found": True,
             "object_id": f"obj_{abs(hash(description)) % 10_000:04d}",
@@ -101,12 +111,19 @@ class MockBackend:
         if not object_id.startswith("obj_"):
             return {"success": False, "error": f"Invalid object_id '{object_id}'."}
         self.world.holding = object_id
+        self._held_key = getattr(self, "_last_found_key", None)
         return {"success": True}
 
     def place(self, pose: Optional[dict]) -> dict:
         if self.world.holding is None:
             return {"success": False, "error": "Nothing to place; not holding anything."}
+        # The block lands where the robot stands - the mock table is only
+        # ever as honest as this line.
+        key = getattr(self, "_held_key", None)
+        if key in self.world.objects:
+            self.world.objects[key] = dict(self.world.robot_pose)
         self.world.holding = None
+        self._held_key = None
         return {"success": True}
 
 

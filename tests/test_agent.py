@@ -202,3 +202,41 @@ def test_persistent_empty_replies_end_the_run():
 
     assert result.stopped_reason == "completed"
     assert result.final_message == "(no response)"
+
+
+# ---------- session history threading (interactive mode) ----------
+
+def test_history_carries_between_runs():
+    dispatcher = ToolDispatcher(MockBackend())
+    agent = Agent(dispatcher, AgentConfig(model="test"),
+                  chat_fn=make_fake_chat([
+                      {"role": "assistant", "content": "Orange is at the bedroom window."}]))
+    r1 = agent.run("scout for the orange block")
+    assert r1.stopped_reason == "completed"
+
+    agent2 = Agent(dispatcher, AgentConfig(model="test"),
+                   chat_fn=make_fake_chat([{"role": "assistant", "content": "On my way."}]))
+    r2 = agent2.run("now fetch it", history=r1.messages)
+
+    # exactly one system prompt, and the first exchange rides along
+    assert sum(1 for m in r2.messages if m["role"] == "system") == 1
+    assert any("scout for the orange block" in m.get("content", "")
+               for m in r2.messages if m["role"] == "user")
+    assert any("bedroom window" in m.get("content", "")
+               for m in r2.messages if m["role"] == "assistant")
+    assert r2.final_message == "On my way."
+
+
+def test_mock_place_moves_the_block():
+    backend = MockBackend()
+    assert backend.navigate_to("bedroom", None)["success"] is True
+    res = backend.find_object("red block")
+    assert res["found"] is True
+    assert backend.pick(res["object_id"])["success"] is True
+    assert backend.navigate_to("table", None)["success"] is True
+    assert backend.place(None)["success"] is True
+    # the block is now findable at the table, not at its old spot
+    res = backend.find_object("red block")
+    assert res["found"] is True
+    table = backend.world.named_poses["table"]
+    assert res["pose"]["x"] == table["x"] and res["pose"]["y"] == table["y"]
