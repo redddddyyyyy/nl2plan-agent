@@ -297,8 +297,11 @@ def test_prompt_names_the_room_for_every_block():
 
 
 def test_prompt_gives_a_fixed_sweep_order():
-    """Search order is brown -> orange -> red -> magenta when the room is
-    unknown, so a miss never turns into a random walk."""
+    """A miss falls back to a fixed room sweep, never a random walk.
+
+    Order is lounge -> sofa -> bedroom -> gym: nearest-first from the drop
+    table, which is where a mission usually ends.
+    """
     from nl2plan_agent.prompt import SYSTEM_PROMPT
 
     lowered = SYSTEM_PROMPT.lower()
