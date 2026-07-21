@@ -14,6 +14,7 @@ Designed to be robust against the kinds of failures small local models make:
 from __future__ import annotations
 
 import json
+import re
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -23,6 +24,11 @@ from typing import Any, Callable, List, Optional
 from .prompt import SYSTEM_PROMPT
 from .tool_schemas import ALL_TOOLS
 from .tools import ToolDispatcher
+
+# Qwen sometimes narrates its next action ("I will navigate to the lounge…")
+# instead of calling the tool. A reply like that is a plan, not an answer.
+_INTENT_RE = re.compile(
+    r"\b(i will|i'll|i am going to|i'm going to|let me)\b", re.IGNORECASE)
 
 
 @dataclass
@@ -118,6 +124,13 @@ class Agent:
                     messages.append({"role": "user", "content":
                                      "Continue the task. If it is already "
                                      "complete, say what you did."})
+                    self._log({"kind": "nudge", "count": nudges})
+                    continue
+                if _INTENT_RE.search(final) and nudges < 2:
+                    nudges += 1
+                    messages.append({"role": "user", "content":
+                                     "Don't announce the action - call the "
+                                     "tool that does it."})
                     self._log({"kind": "nudge", "count": nudges})
                     continue
                 return self._finalize(messages, step + 1, start, "completed",
