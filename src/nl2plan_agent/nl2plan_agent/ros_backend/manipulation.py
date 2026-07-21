@@ -64,14 +64,21 @@ def _rotate_to(node, goal_yaw: float, deadline: float) -> bool:
 
 
 def align(node, tx: float, ty: float, reach: float,
-          timeout: float = ALIGN_TIMEOUT_S) -> Optional[str]:
+          timeout: float = ALIGN_TIMEOUT_S,
+          stall_is_error: bool = False) -> Optional[str]:
     """Face (tx, ty), creep until it sits `reach` m ahead; error or None.
 
     Rotation error is measured once against AMCL, then executed on odometry
     — odom is smooth while AMCL updates arrive in chunky steps that make a
     feedback loop hunt. The creep's stall guard treats "commanded forward
-    but not moving" as contact, and contact IS arrival (touch-docking; the
-    distance-based table stop missed half the time).
+    but not moving" as contact; for the table, contact IS arrival
+    (touch-docking; the distance-based table stop missed half the time).
+    A pick approach passes stall_is_error=True: contact short of reach
+    means an obstacle, and grasping from there teleports the block. The
+    shortfall is judged HERE, on odometry, because comparing the robot's
+    AMCL pose to the target after the creep double-counts whatever AMCL
+    corrected mid-creep — that misread 0.52-0.58 m on picks whose robot
+    was standing at the block (live 2026-07-21, the back-off/stare loop).
     """
     err = _wait_poses(node)
     if err is not None:
@@ -96,8 +103,12 @@ def align(node, tx: float, ty: float, reach: float,
         if moved > stall_ref + 0.02:
             stall_ref, stall_t = moved, time.monotonic()
         elif time.monotonic() - stall_t > 2.5:
-            node.stop_base()   # pressed against something static: docked
-            return None
+            node.stop_base()   # pressed against something static
+            if stall_is_error:
+                return (f"Pressed against something "
+                        f"{max(drive - moved, 0.0):.2f} m before reaching "
+                        "the target.")
+            return None   # docked (the table's arrival signal)
         cmd = Twist()
         cmd.linear.x = 0.1
         node.cmd_pub.publish(cmd)

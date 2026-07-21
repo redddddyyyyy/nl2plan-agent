@@ -12,7 +12,8 @@ from typing import Optional
 
 from ..named_poses import load_named_poses
 from . import manipulation, nav, perception
-from .logic import COLOR_ENTITIES, parse_color, standoff_pose
+from .logic import (COLOR_ENTITIES, from_robot_frame, parse_color, pick_error,
+                    standoff_pose)
 from .node import get_node
 
 REFINE_STANDOFF = 0.6   # m: outside the 0.45 m blind zone, prime viewing
@@ -88,8 +89,8 @@ class RosBackend:
         det = self._last_detection
         if det is None or det["object_id"] != object_id:
             return {"success": False,
-                    "error": f"No confirmed object '{object_id}' in reach; "
-                             "run find_object first."}
+                    "error": pick_error(object_id,
+                                        det["object_id"] if det else None)}
         node = self._node
         if node.robot is not None:
             dist = ((node.robot[0] - det["x"]) ** 2 +
@@ -122,13 +123,46 @@ class RosBackend:
             if err is not None:
                 return {"success": False, "error": err}
         fresh = perception.confirm_here(node, det["color"])
-        if fresh is not None:
-            det = {**det, "x": fresh["x"], "y": fresh["y"]}
-            self._last_detection = det
-        err = manipulation.align(node, det["x"], det["y"],
-                                 manipulation.GRASP_REACH)
+        if fresh is None:
+            # The standoff is prime viewing: 0.6 m out, dead ahead. A block
+            # that can't be re-confirmed from here was a bad sighting (0.55 m
+            # off truth, measured at the lounge 2026-07-21) or is gone —
+            # grasping on the stale coordinate teleports it across visible
+            # floor. A refused pick costs one find_object; a teleport costs
+            # the demo take.
+            self._last_detection = None
+            return {"success": False,
+                    "error": f"Lost the {det['color']} block on final "
+                             "approach; run find_object again from here."}
+        det = {**det, "x": fresh["x"], "y": fresh["y"]}
+        self._last_detection = det
+        # Drive the final stretch on the offset measured off the robot's own
+        # nose, re-anchored to where the robot believes it is NOW. The map
+        # coordinate is derived from the same sighting, but replaying it
+        # after the estimate shifts (24 deg of AMCL yaw, measured at
+        # bedroom_window) aims the creep at floor beside the block and lets
+        # the magic grasp fake the pick from there.
+        gx, gy = det["x"], det["y"]
+        if fresh.get("rel") is not None and node.robot is not None:
+            gx, gy = from_robot_frame(fresh["rel"][0], fresh["rel"][1],
+                                      node.robot)
+        # stall_is_error: a creep that presses into an obstacle short of
+        # reach must refuse, not grasp — the pin would teleport the block
+        # across the gap. The shortfall is odometry-measured inside align;
+        # re-measuring it here against node.robot double-counts whatever
+        # AMCL corrected mid-creep and refuses picks whose robot is
+        # standing at the block (live 2026-07-21, the back-off/stare loop).
+        err = manipulation.align(node, gx, gy, manipulation.GRASP_REACH,
+                                 stall_is_error=True)
         if err is not None:
-            return {"success": False, "error": err}
+            # Back off before refusing: stalled ~0.5 m out, the block sits
+            # in the camera's near blind zone and the re-scan this error
+            # asks for would fail from here.
+            manipulation.back_away(node)
+            self._last_detection = None
+            return {"success": False,
+                    "error": err + " Backed off for a clear view; "
+                             "run find_object again from here."}
         manipulation.grasp_sequence(node, det["entity"])
         self._holding = det["entity"]
         return {"success": True}
