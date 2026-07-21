@@ -34,3 +34,11 @@ table:
   x: 4.0
   y: -1.75
   theta: -1.5708
+
+# Behind the white sofa (SofaC back face at x ~ -0.6): 0.7 m west of the
+# brown block at (-1.1, -1.9), facing it. The sofa back is a big flat
+# lidar feature ~1 m ahead, exactly what the bedroom_window corner lacked.
+sofa:
+  x: -1.8
+  y: -1.9
+  theta: 0.0

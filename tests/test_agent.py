@@ -194,6 +194,35 @@ def test_empty_reply_mid_mission_gets_nudged():
     assert len(nudges) == 1
 
 
+def test_intent_reply_without_tool_call_gets_nudged():
+    # Live failure 2026-07-20: mid-search qwen replied "I will navigate to
+    # the lounge to find the orange block." with no tool call, and the run
+    # finalized "completed" while the model was still mid-plan.
+    scripted = [
+        {"role": "assistant", "content": "",
+         "tool_calls": [{"function": {"name": "navigate_to",
+                                       "arguments": {"target_name": "lounge"}}}]},
+        {"role": "assistant",
+         "content": "I will navigate to the bedroom to find the red block.\n\n"},
+        {"role": "assistant", "content": "",
+         "tool_calls": [{"function": {"name": "navigate_to",
+                                       "arguments": {"target_name": "bedroom"}}}]},
+        {"role": "assistant", "content": "",
+         "tool_calls": [{"function": {"name": "find_object",
+                                       "arguments": {"description": "red block"}}}]},
+        {"role": "assistant", "content": "Found the red block in the bedroom."},
+    ]
+    dispatcher = ToolDispatcher(MockBackend())
+    agent = Agent(dispatcher, AgentConfig(model="test"), chat_fn=make_fake_chat(scripted))
+    result = agent.run("find the red block")
+
+    assert result.stopped_reason == "completed"
+    assert result.final_message == "Found the red block in the bedroom."
+    nudges = [m for m in result.messages
+              if m["role"] == "user" and "call the tool" in m["content"].lower()]
+    assert len(nudges) == 1
+
+
 def test_persistent_empty_replies_end_the_run():
     scripted = [{"role": "assistant", "content": ""}] * 5
     dispatcher = ToolDispatcher(MockBackend())
@@ -240,3 +269,51 @@ def test_mock_place_moves_the_block():
     assert res["found"] is True
     table = backend.world.named_poses["table"]
     assert res["pose"]["x"] == table["x"] and res["pose"]["y"] == table["y"]
+
+
+# ---------- block locations are in the prompt, not guesswork ----------
+
+def test_prompt_names_the_room_for_every_block():
+    """The model must not have to hunt room by room.
+
+    Without this the search order is pure guesswork: a 2026-07-20 run spent
+    all 16 steps sweeping rooms for the orange block and hit the step cap
+    without ever reaching pick, while find_object at the right pose works
+    first try. Rooms below come from perception_node/scene_setup.py.
+    """
+    from nl2plan_agent.prompt import SYSTEM_PROMPT
+
+    colors = ("brown", "orange", "red", "magenta")
+    lowered = SYSTEM_PROMPT.lower()
+    for color, room in (("orange", "lounge"), ("brown", "sofa"),
+                        ("red", "bedroom"), ("magenta", "gym")):
+        others = [c for c in colors if c != color]
+        # The line must tie THIS color to its room - a line naming every
+        # colour and every room (as the old prompt did) teaches nothing.
+        line = next((l for l in lowered.splitlines()
+                     if color in l and room in l
+                     and not any(o in l for o in others)), None)
+        assert line is not None, f"prompt never puts {color} in {room} on its own"
+
+
+def test_prompt_gives_a_fixed_sweep_order():
+    """Search order is brown -> orange -> red -> magenta when the room is
+    unknown, so a miss never turns into a random walk."""
+    from nl2plan_agent.prompt import SYSTEM_PROMPT
+
+    lowered = SYSTEM_PROMPT.lower()
+    order = ["lounge", "sofa", "bedroom", "gym"]
+
+    def lists_in_order(line):
+        cursor = 0
+        for room in order:
+            idx = line.find(room, cursor)
+            if idx < 0:
+                return False
+            cursor = idx + len(room)
+        return True
+
+    # Some other line (e.g. the location inventory) may name the same rooms
+    # in another order; at least one line must give them as a sweep.
+    assert any(lists_in_order(l) for l in lowered.splitlines()), \
+        "no line lists the vantage points in sweep order"

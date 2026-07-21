@@ -4,9 +4,9 @@
 They spawn clustered in mobile_arm_sim's launch, and brown-vs-orange is a
 pair the camera genuinely confuses up close (same hue; orange's antialiased
 rim sheds brown-band pixels). Rather than edit the sim repo, teleport each
-block to its own room after it spawns: magenta on the gym mat, red and
-orange at opposite ends of the bedroom, brown on the living-room mat
-by the blue ball.
+block to its own room after it spawns: magenta on the gym mat, red in the
+bedroom, orange on the lounge mat, brown on the floor behind the white
+sofa.
 World-frame placement is fine here — scene setup, not the carried-block pin.
 """
 
@@ -17,9 +17,12 @@ from rclpy.node import Node
 # One block per area, ~0.7 m from its search pose in named_poses.yaml.
 BLOCK_XY = {
     'target_block': (-7.6, -0.1),        # red: bedroom, south end
-    'distractor_orange': (-4.5, 2.1),    # bedroom, window end (map-checked clear of the bed)
+    'distractor_orange': (2.6, 4.2),     # lounge mat: the 2026-07-20 swap proved the old
+                                         # failures followed the bedroom_window POSE
+                                         # (24 deg AMCL yaw error), not the colour — kept
     'distractor_magenta': (-6.3, -3.7),  # gym mat
-    'distractor_brown': (2.6, 4.2),      # living-room mat, next to the blue ball
+    'distractor_brown': (-1.1, -1.9),    # behind the white sofa (SofaC back face at
+                                         # x~-0.6); nothing lives at bedroom_window now
 }
 
 
