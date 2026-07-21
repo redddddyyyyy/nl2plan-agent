@@ -35,6 +35,50 @@ def parse_color(description: str) -> Optional[str]:
     return None
 
 
+def pick_error(object_id: str, available: Optional[str]) -> str:
+    """Why a pick was refused, naming the id that would have worked.
+
+    A small model that fumbles the id (a placeholder, or the colour alone)
+    can only recover if the error tells it what to say instead; without
+    that it re-runs find_object and re-fumbles until the step cap.
+    """
+    if available:
+        return (f"No confirmed object '{object_id}' in reach. "
+                f"The object you just found is '{available}' — "
+                f"call pick with that exact object_id.")
+    return (f"No confirmed object '{object_id}' in reach; "
+            "run find_object first.")
+
+
+def to_robot_frame(x: float, y: float,
+                   robot: tuple[float, float, float]) -> tuple[float, float]:
+    """Map-frame (x, y) expressed relative to a robot at (rx, ry, yaw).
+
+    Detections are back-projected through the robot's believed pose, so a
+    localization error lands in BOTH the robot pose and the projection.
+    Subtracting one from the other cancels it, which is what makes a
+    stationary block look stationary even while AMCL's heading wanders.
+    """
+    rx, ry, yaw = robot
+    dx, dy = x - rx, y - ry
+    cos_y, sin_y = math.cos(-yaw), math.sin(-yaw)
+    return (dx * cos_y - dy * sin_y, dx * sin_y + dy * cos_y)
+
+
+def from_robot_frame(rel_x: float, rel_y: float,
+                     robot: tuple[float, float, float]) -> tuple[float, float]:
+    """Inverse of to_robot_frame: a robot-relative offset back into the map.
+
+    Re-anchoring a sighting through the robot's CURRENT pose is what keeps
+    the final approach honest — the offset was measured against the robot,
+    so it stays true even if the map estimate has shifted underneath it.
+    """
+    rx, ry, yaw = robot
+    cos_y, sin_y = math.cos(yaw), math.sin(yaw)
+    return (rx + rel_x * cos_y - rel_y * sin_y,
+            ry + rel_x * sin_y + rel_y * cos_y)
+
+
 def cluster_spread(samples: Sequence[tuple[float, float]]) -> float:
     """Diagonal of the bounding box around (x, y) samples, in meters."""
     xs = [s[0] for s in samples]
