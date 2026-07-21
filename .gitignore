@@ -12,8 +12,8 @@ install/
 log/
 
 # Logs and traces
-logs/*.jsonl
-logs/*.log
+**/logs/*.jsonl
+**/logs/*.log
 
 # IDE
 .vscode/
@@ -28,7 +28,8 @@ Thumbs.db
 *.pt
 *.onnx
 
-# AI memories
+# Personal working notes — not for the repo
+instructions.md
 SESSION_LOG.md
 RESUME.md
 docs/superpowers/

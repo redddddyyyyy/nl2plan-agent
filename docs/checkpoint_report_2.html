@@ -1,0 +1,200 @@
+<meta charset="utf-8">
+<style>
+  body { font-family: "Liberation Serif", Georgia, serif; font-size: 11.5pt;
+         max-width: 7.1in; margin: 0.6in auto; color: #111; line-height: 1.45; }
+  h1 { font-size: 17pt; margin-bottom: 2pt; }
+  .byline { color: #444; margin-bottom: 14pt; }
+  h2 { font-size: 13pt; border-bottom: 1px solid #999; padding-bottom: 3pt;
+       margin-top: 18pt; }
+  pre { font-family: "Liberation Mono", monospace; font-size: 8pt;
+        background: #f5f5f5; border: 1px solid #ddd; padding: 8pt; line-height: 1.25; }
+  li { margin-bottom: 7pt; }
+  b.lead { font-weight: bold; }
+</style>
+
+<h1>NL2Plan: language-driven task planning on the mobile manipulator &mdash; checkpoint report</h1>
+<p class="byline">Rajeev Reddy &mdash; July 21, 2026</p>
+
+<h2>What it does</h2>
+<p>
+The July&nbsp;15 checkpoint ended with a hand-written state machine driving one fixed mission.
+This checkpoint replaces that state machine with a locally-hosted LLM: you type a natural-language
+command &mdash; <i>"pick up the magenta block and place it on the table"</i> &mdash; and a
+Qwen2.5-7B-Instruct model (via Ollama, fully offline) decomposes it into calls against four tools
+(<b>navigate_to</b>, <b>find_object</b>, <b>pick</b>, <b>place</b>) executed by the same live Nav2 /
+perception / arm stack as before. The model reads every tool result and replans on failure: a failed
+scan sends it to another room and back, a refused grasp sends it back to re-verify. Commands run in a
+persistent conversational session, so after fetching several blocks you can ask
+<i>"where did you find each block?"</i> and it answers from its own history without moving the robot.
+</p>
+<p>
+The scene now has four 5&nbsp;cm blocks (red, orange, magenta, brown), one per area of the house, each
+roughly 0.7&nbsp;m from a named search pose. On the final build, twelve consecutive missions across all
+four blocks completed without a single failed tool call &mdash; a recorded continuous four-block session
+plus a scripted two-round rehearsal &mdash; each mission taking 4&ndash;8 model steps and about
+2&frac12; minutes.
+</p>
+
+<h2>Architecture</h2>
+<p>The task layer follows the SayCan / PaLM-E pattern: the LLM does task-level reasoning only, and
+everything below it is classical, verified robotics.</p>
+<pre>
+ "pick up the magenta block and place it on the table"
+          |
+          v
+ +--------------------------+   tool call (JSON)   +--------------------+
+ |  agent loop              | -------------------> |  ToolDispatcher    |
+ |  Qwen2.5-7B-Instruct     | &lt;------------------- |  + Ros2Backend     |
+ |  (Ollama, local, 7B)     |   tool result        +--------------------+
+ |  step + wall-time caps,  |                        |        |       |
+ |  schema check, JSONL     |                        v        v       v
+ |  trace of every call     |                      Nav2   stop-spin  arm/gripper
+ +--------------------------+                    (action)  scan +    controllers
+                                                           confirm   + 20 Hz grasp pin
+                                                              ^
+                                             /block_pose/&lt;color&gt;  (PoseStamped, map)
+                                             multi-color HSV detector: per-color bands,
+                                             all candidate blobs, size-distance gate
+</pre>
+<ul>
+<li><b class="lead">LLM layer.</b> Qwen2.5-7B via Ollama's tool-use API &mdash; deliberately small and
+local, because 7B-scale reliability under tool use is part of what this project studies. The loop
+enforces step and wall-time caps, validates arguments against JSON schemas, nudges the model when it
+narrates instead of acting, and logs every call and result to a JSONL trace (all debugging below came
+out of that trace).</li>
+<li><b class="lead">The prompt is a semantic map.</b> The system prompt tells the model which room each
+block lives in and a fixed sweep order for when a scan misses. Perception still does all the real work
+locally &mdash; the prompt only decides which room to drive to first.</li>
+<li><b class="lead">Perception.</b> The single-target detector from last checkpoint became a multi-color
+node: per-color HSV bands (orange and brown share hue almost exactly; saturation is what separates
+them), every above-threshold blob offered as a candidate, and the same size-distance consistency gate
+deciding what is actually a 5&nbsp;cm cube. One pose topic per color.</li>
+<li><b class="lead">The confirm gate.</b> Nothing counts as "found" until the robot stops and four
+consecutive sightings cluster within 0.2&nbsp;m <i>in the robot's own frame</i>, inside a plausibility
+band of distances a real floor block can occupy. Both italicized choices were hard-won; see below.</li>
+<li><b class="lead">Grasp approach.</b> Nav2 plans the approach to a 0.6&nbsp;m standoff (a blind creep
+once rammed a stool), the block is re-confirmed dead-ahead, and only the last stretch is driven on
+odometry, re-anchored through the robot's current pose. If the block cannot be re-confirmed, or the
+creep presses into something before reaching grasp range, <b>the pick refuses</b> and tells the model to
+re-scan. Grasping itself is still the pinned attachment from last checkpoint; placement is still the
+touch-dock.</li>
+</ul>
+
+<h2>What I found</h2>
+<ul>
+<li><b class="lead">A 7B planner needs the world written down.</b> Without the block&rarr;room list in
+the prompt, the model room-walked until it hit the step cap; with it, the first navigation is always
+correct and missions settle at 4&ndash;8 steps. Even rule <i>wording</i> matters: a search rule that
+happened to name the lounge first sent the robot to the lounge for every block.</li>
+<li><b class="lead">Error strings are the model's API.</b> A small model recovers exactly as well as
+your error messages let it. When a fumbled pick id just said "run find_object first", the model
+re-scanned and re-fumbled forever; when the error names the valid id, it corrects in one step. Same
+pattern for empty replies (nudged) and refused grasps ("run find_object again from here").</li>
+<li><b class="lead">Cluster in the robot frame, not the map.</b> At one search pose AMCL's heading was
+24&deg; off ground truth. Map-frame samples of a <i>parked</i> block scatter past any sane cluster gate,
+because the localization error is baked into every projection &mdash; while robot-relative geometry is
+rock steady, since the same error corrupts the robot pose and the projection equally and cancels. The
+confirm gate clusters robot-relative, and the final approach re-anchors the sighting through the current
+pose for the same reason.</li>
+<li><b class="lead">Gates must match where the robot actually parks &mdash; and instrumentation beats
+intuition.</b> The confirm gate's distance ceiling was set from the nominal search poses (blocks 0.7&ndash;0.8&nbsp;m
+away) and silently rejected true sightings, because Nav2's goal tolerance plus AMCL error parks the
+robot up to ~1.2&nbsp;m out. The visible symptom &mdash; "the robot stares straight at the block, then
+walks away" &mdash; looked exactly like a detector bug. What cracked it was making every failed scan
+report <i>why</i> each rejection happened; the log then showed clean clusters at the block's true
+position being rejected at 0.95&ndash;1.19&nbsp;m, and the fix was one measured constant.</li>
+<li><b class="lead">Never compare two localization fixes seconds apart for a sub-meter decision.</b>
+A safety check that re-measured the robot-to-block distance after the final creep kept refusing picks
+whose robot was standing at the block: AMCL had simply corrected itself mid-creep, and the check
+double-counted the shift as "0.5&nbsp;m short". Short-horizon geometry belongs to odometry; the check
+moved into the creep itself and the false refusals vanished.</li>
+<li><b class="lead">Refuse rather than pretend.</b> The pinned grasp will "succeed" from anywhere, so
+honesty has to be enforced upstream: the old code would grasp on a stale sighting and teleport the block
+visibly across the floor. Now any grasp that cannot be re-verified is refused &mdash; a refusal costs
+one re-scan (~30&nbsp;s); a fake success costs the integrity of every result after it. Several
+"regressions" during this phase were actually old silent failures becoming visible, which is the
+trade you want.</li>
+</ul>
+
+<h2>Results</h2>
+<p>On the final build (all at real-time factor ~1.0):</p>
+<ul>
+<li>Twelve consecutive successful missions across all four blocks: a recorded continuous four-block
+session (6 model steps each) plus a scripted rehearsal of every block twice from a freshly reset scene
+&mdash; 8/8 with <b>zero</b> failed tool calls, 4&ndash;8 steps and 132&ndash;154&nbsp;s per mission.</li>
+<li>Recovery behaviors exercised live on earlier builds the same day: failed scans &rarr; search another
+room and return (re-rolling the park); refused grasps &rarr; re-scan &rarr; successful pick; empty model
+replies &rarr; nudged back on task mid-mission.</li>
+<li>Session memory: after fetching blocks, "where did you find each block?" is answered correctly from
+conversation history in one step, no robot motion.</li>
+<li>36 unit tests pass; the perception and approach lessons above are each pinned by a regression test
+reproducing the live failure.</li>
+</ul>
+
+<h2>Progress against the modular-decomposition goal</h2>
+<p>
+The feedback on the last checkpoint was to decompose the simulation into <i>reusable hybrid modules that
+can be recalled from a knowledge base and be sequentially configured and parameterized to achieve any
+task outcome, with random interruptions.</i> That framing drove this checkpoint's architecture. Scored
+honestly, piece by piece:
+</p>
+<ul>
+<li><b class="lead">Reusable modules &mdash; done.</b> This checkpoint <i>is</i> that refactor. The
+monolithic mission state machine is gone; in its place are four self-contained skills behind one uniform
+call/result interface. Each owns its own verification (the confirm gate, the re-confirm before grasping)
+and its own failure semantics, returns a structured result rather than dying, and is invocable in any
+order with any arguments. The same four modules served every command run this week.</li>
+<li><b class="lead">Hybrid &mdash; done.</b> The split is hybrid by construction: a learned component
+(the LLM) selects and sequences, while the inside of every module is classical, verifiable robotics
+&mdash; Nav2 planning, a geometric detector with explicit gates, scripted arm control. Neither half is
+asked to do the other's job.</li>
+<li><b class="lead">Sequentially configured and parameterized &mdash; done.</b> No sequence is
+hand-written any more. The planner composes and parameterizes the modules at runtime from a
+natural-language goal: different block, different room, different order, same four modules. Twelve
+consecutive missions across four blocks is the evidence that the composition is reliable and not merely
+possible.</li>
+<li><b class="lead">Random interruptions &mdash; handled in practice, not yet a formal test.</b> Every
+organic interruption encountered this week was absorbed by the replanning loop: failed scans send the
+robot to another room and back, refused grasps trigger re-verification, aborted navigation replans. What
+does not exist yet is deliberate fault injection. The hooks are already there &mdash; blocks can be
+teleported mid-mission through Gazebo's entity-state service and navigation goals can be cancelled
+mid-run &mdash; so a scripted interruption suite is a small, concrete next step rather than a research
+question.</li>
+<li><b class="lead">Recall from a knowledge base &mdash; not yet.</b> Today the skill vocabulary and the
+world knowledge live in the prompt: a fixed tool registry plus a semantic map of which block sits in
+which area. Nothing is retrieved from an external store. The decomposition above is what makes that step
+tractable: each module already has a name, a typed parameter schema, and known preconditions and
+effects, so moving those definitions into a queryable store and retrieving the task-relevant subset per
+command changes what fills the context window, not how the runtime works. "Any task outcome" then scales
+with the size of the skill base rather than with the length of the prompt.</li>
+</ul>
+<p>
+In short: the decomposition and the runtime sequencing are in place and demonstrated; knowledge-base
+recall and scripted interruption testing are the next stage, and the architecture was built so that both
+are additions rather than rewrites.
+</p>
+
+<h2>Future work</h2>
+<p>Planned next, roughly in order:</p>
+<ul>
+<li><b class="lead">Quantitative evaluation.</b> Three commands &times; ten runs each: success rate,
+recovery rate, and replan latency &mdash; the metrics table for the README.</li>
+<li><b class="lead">Per-block drop spots.</b> All placements currently aim at one point on the drop
+table, so in continuous multi-block sessions a later placement can knock an earlier block aside;
+spreading drops along the table edge fixes the last blemish in the continuous demo.</li>
+<li><b class="lead">Randomized spawn + pure search mode.</b> Remove the semantic map from the prompt,
+randomize block positions per run (seeded), and let the sweep rule carry the search &mdash; the honest
+robustness test, and it makes "knows the house" vs "searches the house" a switchable demo.</li>
+<li><b class="lead">Open-vocabulary perception.</b> Swap the HSV detector for GroundingDINO so
+distractors no longer need to differ by color &mdash; "the red mug, not the red block".</li>
+<li><b class="lead">Skill knowledge base.</b> Move the module definitions &mdash; description, parameter
+schema, preconditions, effects &mdash; plus the scene knowledge out of the prompt and into a queryable
+store, and retrieve only the task-relevant subset per command. Same runtime, swappable knowledge, and
+the skill set stops being bounded by prompt length.</li>
+<li><b class="lead">Scripted interruption suite.</b> Deliberate fault injection rather than the organic
+failures observed so far: teleport a block mid-mission, cancel a navigation goal in flight, block a
+doorway during a carry &mdash; then measure recovery rate and time-to-recover per fault type, alongside
+the metrics above.</li>
+<li><b class="lead">Contact-based grasping.</b> Carried over: replace the pinned attachment with real
+finger contact.</li>
+</ul>
