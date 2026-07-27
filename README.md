@@ -62,6 +62,8 @@ Each tool verifies its own work rather than assuming success:
 - **`pick`** hands the approach to Nav2 (a blind creep once drove into a stool), re-confirms the block dead ahead at a 0.6 m standoff, and drives only the last stretch on odometry. If the block cannot be re-confirmed, or the creep presses into something before reaching grasp range, **the pick is refused** and the model is told to scan again. The grasp is a pinned attachment, which would "succeed" from anywhere, so honesty has to be enforced before it rather than by it.
 - **`place`** docks by touch — creep until the stall guard reports contact with the table — because a pose-based stop missed the 0.30 m table about half the time.
 
+[docs/architecture.md](docs/architecture.md) goes further: what each module's contract is, what replacing it would cost, the sixteen safety invariants the code enforces, and an honest account of the coupling that a modularity claim has to answer for.
+
 ## Repo layout
 
 ```
