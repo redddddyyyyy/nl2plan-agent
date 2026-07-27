@@ -14,7 +14,7 @@ structure below is read out of the code that resulted, not a plan I drew up
 front and executed. Some of the boundaries are clean because I needed them to be
 — I could not test an LLM loop against a Gazebo sim on every commit, so a seam
 had to exist. Others are cleaner in the diagram than in the source, and section
-5 says which.
+6 says which.
 
 ## 1. The layers
 
@@ -93,7 +93,7 @@ There is a fourth boundary that is clean almost by accident: `perception_node`
 is a separate ROS package in a separate process, and the only thing crossing
 between it and the agent is a `PoseStamped` on `/block_pose/<color>`. No shared
 objects, no shared Python. It is the most replaceable component in the repo, and
-section 6 leans on that.
+section 7 leans on that.
 
 ## 3. Module by module
 
@@ -102,7 +102,7 @@ section 6 leans on that.
 | `agent.py` | Runs the multi-turn tool loop; enforces step and wall-clock caps; nudges the model when it narrates instead of acting or returns an empty message; writes a JSONL trace of every turn | `Agent.run(command, history) -> AgentResult` | `ChatFn`, `ToolDispatcher`, `SYSTEM_PROMPT`, `ALL_TOOLS` | **Low.** Swapping the model is a constructor argument. Swapping to a different agent framework means rewriting this file only; nothing below it knows an LLM exists |
 | `tool_schemas.py` | The four tool definitions as JSON Schema, in the shape Ollama's tool-use API expects | `ALL_TOOLS`, `TOOLS_BY_NAME` | nothing | **Low**, but it is the interface definition — changing a schema means changing the prompt, both backends, and the dispatcher together |
 | `tools.py` — `ToolDispatcher` | Validates every LLM-supplied argument against its schema, attempts JSON repair on malformed input, executes, catches exceptions, logs the call | `call(name, raw_args) -> ToolCallResult` | `jsonschema`, `json_repair`, a `ToolBackend` | **Low.** This is the safety-relevant chokepoint; see section 4 |
-| `tools.py` — `MockBackend` | An in-memory house with the same rooms, blocks and error strings as the live one | `ToolBackend` | nothing | **Low**, but it is hand-maintained; see section 5 |
+| `tools.py` — `MockBackend` | An in-memory house with the same rooms, blocks and error strings as the live one | `ToolBackend` | nothing | **Low**, but it is hand-maintained; see section 6 |
 | `ros_backend/backend.py` | The four tool bodies, and the only state that spans tool calls: what is held, and the last confirmed detection | `ToolBackend` | everything below it | **High.** This is where the pick protocol lives — standoff, re-confirm, creep, refuse. Replacing it means re-deriving that protocol |
 | `ros_backend/node.py` | The single long-lived ROS node: publishers, cached AMCL/odom/detection state, TF, the Gazebo entity-state client, and the 20 Hz grasp pin, spinning on a daemon executor thread | `get_node() -> BackendNode` | `rclpy`, `nav2_msgs`, `gazebo_msgs`, `tf2_ros` | **High.** Every ROS assumption in the project is concentrated here, which is the point — it is also therefore the single file a port to another middleware would rewrite |
 | `ros_backend/nav.py` | Blocking Nav2 client: waits for `bt_navigator` to reach lifecycle *active*, sends one goal, blocks to a terminal result | `wait_nav_active`, `navigate` | `nav2_msgs`, `lifecycle_msgs` | **Low.** Roughly 80 lines against a standard Nav2 interface. A different planner that speaks `NavigateToPose` drops in unchanged |
@@ -112,13 +112,19 @@ section 6 leans on that.
 | `perception_node` | Separate process. HSV bands per colour, size-versus-distance gate, ground-plane back-projection, one pose topic per colour | `/block_pose/<color>` (`PoseStamped`) | `cv2`, `cv_bridge`, camera topics | **Low structurally, medium in practice.** Any detector publishing that topic works; the bands themselves are scene-specific |
 | `config/named_poses.yaml` | Room name to map pose, overridable by `NL2PLAN_POSES_FILE` | YAML | — | **Trivial.** The only part of the environment that is genuinely config today |
 
-## 4. Safety invariants — the contract
+## 4. The software safety contract
+
+This section covers *software* safety: what the tool layer refuses to do. It is
+not the physical-safety question — whether the robot obeys real dynamics and
+would stay upright on hardware — which is section 5 and is a much harder
+problem. The two are separate, and I originally conflated them.
 
 The system already refuses to do a set of specific unsafe things. Until now
 those refusals existed only as scattered conditionals with comments explaining
 which live run motivated them. Writing them down as a numbered contract is the
-point of this section, and it is the step that has to come before any proof:
-nothing can be proved about a system whose properties have never been stated.
+point of this section, and it is the step that has to come before reasoning
+formally about any of them: nothing can be proved about a system whose
+properties have never been stated.
 
 I want to be exact about the epistemic status here. **These are established by
 code inspection and by live runs that exercised some of them. They are not
@@ -146,14 +152,129 @@ holds" entry below should be read as "this is where the check is written", not
 | I16 | Every mission terminates: hard step cap and wall-clock cap | `agent.py:93`, `agent.py:94` | A model that loops on a failing tool never stops |
 
 I3, I4, I5, I13 and I16 are properties of the tool state machine alone. They
-depend on no geometry, no sensor, and no simulator — which means they are the
-subset a model checker could take without needing a physics model. That is the
-natural first target if the theorem-proof strand goes ahead, and it is worth
-saying that it would prove properties of the *abstraction*, not of the robot.
-I6 through I12, I14 and I15 all quantify over sensor error and are a different
-and much harder problem.
+depend on no geometry, no sensor, and no simulator, so a model checker could
+take them without needing a physics model — though it would then be proving
+things about the *abstraction*, not about the robot. I6 through I12, I14 and
+I15 all quantify over sensor error and are harder. None of them say anything
+about whether the machine stays upright.
 
-## 5. Where the modularity does not hold yet
+## 5. Physical validity — the harder question
+
+Everything above is about software behaviour. A separate question, and the one
+the research agenda actually asks, is whether the simulation reproduces real
+dynamics well enough that code validated here would behave the same on physical
+hardware — and specifically whether the robot would stay upright.
+
+The current answer is no, and for a structural reason rather than a tuning one.
+
+**The base cannot tip over in this simulation, because tipping is excluded from
+the physics.** The chassis is driven by `libgazebo_ros_planar_move.so`
+(`mobile_arm.urdf.xacro:420`), a plugin that *sets* the base's planar velocity
+directly rather than applying wheel torques. Reinforcing that, the four wheels
+are `type="fixed"` joints (`:96`) and so never rotate, and their contact
+friction is explicitly zeroed with `mu1=0, mu2=0` (`:104`) — the model comments
+record that friction was otherwise braking the plugin, costing 65–90% of the
+commanded speed. The consequence is that there are no wheel normal forces, no
+lateral load transfer, and no traction limit anywhere in the model, and the base
+is constrained to the ground plane by construction. Running this simulation any
+number of times therefore yields no evidence at all about tip-over. Absence of
+falling here is not a result; it is an assumption of the model.
+
+**The mass properties are synthetic.** Every inertia comes from the
+`box_inertia` and `cylinder_inertia` macros (`:29`, `:38`), which compute
+uniform-density solid inertia from the link's bounding geometry. The chassis is
+a 5 kg uniform box. Nothing in the model represents motors, battery, compute, or
+wiring — which on a real platform dominate both total mass and centre-of-mass
+placement. The joint `effort="20"` limits are identical on shoulder, elbow and
+wrist, which is a placeholder rather than an actuator specification.
+
+**The mass is not where the shape is.** None of the fifteen links gives its
+`<inertial>` block an `<origin>`, so by the URDF spec each link's centre of mass
+sits at its link frame. The geometry does not: `base_link`'s box is drawn
+centred 0.04 m above its frame, and every arm link's shape is centred partway
+along its length. Gazebo therefore simulates mass concentrated at the joints
+rather than distributed along the limbs, and the inertia tensors compound it —
+each is computed about its own shape's centroid and then applied at the link
+origin with no parallel-axis shift. The simulated mass distribution is
+internally inconsistent with the drawn robot, and it biases toward stability.
+
+The static analysis below is computed both ways: mass at the link frame (what
+Gazebo simulates) and mass at the shape centroid (what the robot appears to be).
+Centre of mass is taken against the wheel support polygon, ±0.14 m fore-aft by
+±0.165 m lateral, across the five arm poses in `manipulation.py` while carrying
+the 50 g block. `a_tip` is the horizontal acceleration that would tip the robot;
+the last column is how many times Nav2's commanded limit that is.
+
+| Arm pose | Margin (m) | CoM height (m) | a_tip (m/s²) | × DWB limit |
+| --- | --- | --- | --- | --- |
+| | *Gazebo / geometric* | *Gazebo / geometric* | *Gazebo / geometric* | *geometric* |
+| REST | 0.131 / 0.131 | 0.087 / 0.119 | 14.8 / 10.8 | 4.3 |
+| PRE_GRASP | 0.123 / 0.120 | 0.080 / 0.110 | 15.0 / 10.7 | 4.3 |
+| GRASP | 0.123 / 0.120 | 0.077 / 0.106 | 15.7 / 11.2 | 4.5 |
+| LIFT | 0.127 / 0.125 | 0.087 / 0.119 | 14.3 / 10.3 | 4.1 |
+| DROP | 0.119 / 0.116 | 0.079 / 0.109 | 14.8 / 10.4 | 4.2 |
+| **worst of all configurations** | 0.122 / 0.119 | 0.086 / 0.118 | **14.0 / 9.9** | **4.0** |
+
+The last row sweeps all four arm joints across their full limits rather than
+only the five commanded poses. It lands at `shoulder_lift = +0.78 rad` with the
+rest at zero, and is only 4% worse than DROP — the arm is roughly one seventh of
+the robot's 7.39 kg, so arm posture barely moves the centre of mass. The chassis
+dominates. Nav2's DWB is configured at `acc_lim_x/y: 2.5` m/s²
+(`nav2_params.yaml:160`), so the worst reachable configuration still has four
+times the headroom it needs.
+
+Two caveats on that comfort. First, it is a statement about a 5 kg uniform box
+carrying a 1 kg arm, not about hardware: the components that would move a real
+centre of mass are absent from the model, and a real 4-DOF arm with servos over
+a 0.35 m reach could plausibly be three times the modelled arm mass. Second, and
+because the chassis dominates, the result is *insensitive* to the thing that
+varies during a mission and *highly sensitive* to the thing that is synthetic.
+The analysis method is sound; the inputs are not yet real.
+
+The figures come from `analysis/envelope.py` in the `mobile-arm-dynamics`
+repository, which reads this model's URDF directly. An earlier draft of this
+section quoted roughly 19 m/s² by measuring centre-of-mass height from
+`base_link` rather than from the ground plane one wheel radius below it; the
+tooling is what caught it.
+
+Worth noting separately that the arm *is* dynamically simulated — revolute
+joints with damping and friction under `gazebo_ros2_control` — so it is only the
+base that is kinematic. And because the grasp is a teleport pin rather than a
+contact grasp, the payload never loads the arm, so the one event where payload
+dynamics matter is faked.
+
+What would have to change, in dependency order, before any claim about physical
+robots could be supported:
+
+1. **A simulation that can tip.** Continuous wheel joints, a drive plugin that
+   applies wheel torques, realistic contact friction. Nothing downstream means
+   anything until this holds, and it will disturb the Nav2 tuning and the
+   odometry that the current results depend on.
+2. **Measured mass properties.** From CAD, or by weighing the platform and
+   finding the centre of mass on a tilt table. This is the gate on sim-to-real:
+   step 1 without step 2 simulates a robot that does not exist.
+3. **A contact grasp**, so the payload enters the dynamics.
+4. **The stability analysis proper.** Static first — centre-of-mass projection
+   inside the support polygon over the whole commanded arm configuration space,
+   which is analytically provable for a rigid-body model. Then dynamic, via a
+   force-angle stability measure or zero-moment-point criterion evaluated over
+   the acceleration envelope. The provable statement has the form *for all base
+   accelerations within a bound and all arm configurations in a set, the
+   stability measure stays positive* — which converts directly into a runtime
+   constraint on acceleration and arm extension.
+5. **Formal reachability tooling** over the closed loop, if wanted, and only
+   after the above.
+
+One structural note. None of this belongs in this repository. NL2Plan is the
+task-planning layer; it emits `navigate_to`, `pick` and `place`. Tip-over
+stability is a property of the chassis and the low-level controllers, which live
+in `mobile_arm_sim`. What NL2Plan would do is *consume* the result: a conclusion
+of the form "the arm must be stowed while base speed exceeds v" becomes another
+row in the section 4 contract, enforced in the tool layer. The proof work sits
+one layer below this repository, and the contract above is the interface through
+which its conclusions would arrive.
+
+## 6. Where the modularity does not hold yet
 
 A four-method seam is a syntactic boundary. It says nothing about whether the
 two sides share assumptions, and here they share a lot.
@@ -212,9 +333,9 @@ exists — after `place` moves a block, the prompt still asserts its original
 room. It works, and it keeps the code small, but it means there is no queryable
 state to write invariants against beyond the two fields above.
 
-## 6. What transfer to another environment would cost
+## 7. What transfer to another environment would cost
 
-Splitting section 5 by what actually changes gives two packs. Nothing in the
+Splitting section 6 by what actually changes gives two packs. Nothing in the
 current code has this shape; describing it is the proposal.
 
 **An environment pack** — everything that is a fact about the building and the
@@ -251,7 +372,7 @@ toward the transferability the agenda asks for. Recalibrating a colour detector
 for a new scene is the one part that is genuinely empirical and cannot be made
 cheap by refactoring.
 
-## 7. Status
+## 8. Status
 
 What is measured: eight missions across four blocks completed end to end on
 2026-07-21 with no failed tool calls, plus one continuous session fetching all
@@ -269,5 +390,5 @@ next piece of work on this strand, and it is a precondition for treating any of
 this as proved.
 
 What is not attempted: any formal proof. Section 4 states the properties, which
-is the step that has to come first, and section 5 states the coupling that a
+is the step that has to come first, and section 6 states the coupling that a
 proof would have to contend with.
