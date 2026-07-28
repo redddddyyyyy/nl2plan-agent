@@ -64,6 +64,8 @@ Each tool verifies its own work rather than assuming success:
 
 [docs/architecture.md](docs/architecture.md) goes further: what each module's contract is, what replacing it would cost, the sixteen safety invariants the code enforces, and an honest account of the coupling that a modularity claim has to answer for.
 
+[docs/physics.md](docs/physics.md) derives the tuned constants instead of asserting them — why the grasp re-confirms at 0.6 m (a 3× cut in range error), why detections are clustered in the robot's frame rather than the map's (a 24° heading error predicts 0.46 m of smear at 1.1 m; 0.55 m was measured), and how `GRASP_REACH` compares with the arm's kinematic limit computed from the URDF. It is also explicit that the arm has no inverse kinematics today, and gives the closed form for when it does.
+
 ## Repo layout
 
 ```
