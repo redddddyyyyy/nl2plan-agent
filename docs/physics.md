@@ -1,7 +1,7 @@
 # The geometry behind the tuned constants
 
 Several numbers in this repository were arrived at by watching the robot fail and
-adjusting until it stopped: the 0.6 m standoff before a grasp, the 0.35 m reach
+adjusting until it stopped: the 0.6 m standoff before a grasp, the reach
 the base drives to, the decision to cluster detections in the robot's frame
 rather than the map's. They worked, but "it worked after I changed it" is a weak
 thing to stand on.
@@ -93,9 +93,11 @@ view.
 
 ## 4. The arm's reach, checked against the constant
 
-`manipulation.py` drives the base until the block sits `GRASP_REACH = 0.35 m`
-ahead of base centre. That number was measured on the simulator months before
-any of this analysis existed.
+`manipulation.py` drives the base until the block sits `GRASP_REACH` ahead of
+base centre. That number was 0.35 m, measured on the simulator months before any
+of this analysis existed, and this section is the story of checking it. It does
+not survive. What replaced it, and why the block changed shape as a result, is
+at the end of section 5.
 
 The arm is a shoulder pan about the vertical axis followed by three joints
 rotating about parallel axes — a planar three-link chain on a turntable. Reading
@@ -257,6 +259,47 @@ arm redundant by one; fixing the approach pitch removes the redundancy and makes
 the solution closed-form. The elbow sign gives the usual elbow-up and elbow-down
 pair, and the one to take is whichever keeps every joint inside its limits.
 
+### What this changed
+
+The conclusion of sections 4 and 5 is that the robot could not do the task, and
+that no amount of tuning would have fixed it: there is no value of
+`GRASP_REACH` that reaches a 50 mm cube on the floor, and the gripper could not
+have closed on one either. Its two fingers share an axis and only mirror their
+mounting offset, so driving them symmetrically — which is what the code does
+since 2026-07-29; before that it sent both the same command and they slid
+sideways together without ever changing the gap — opens the faces from 28 mm to
+at most 38 mm. Against a 50 mm block.
+
+So the block changed rather than the constants. It is now an upright
+**30 × 30 × 150 mm** bar:
+
+| | Old cube | Now |
+| --- | --- | --- |
+| Grasp height | 0.025 m — unreachable | 0.075 m, reached at 0.262 m with margin |
+| Fits the gripper | no, 50 mm into a 38 mm gap | yes, 4 mm either side |
+| Visible to the camera from | 0.367 m | 0.274 m |
+| `GRASP_REACH` | 0.350 m, unreachable | 0.250 m, where the pose actually goes |
+| Blind creep before the grasp | 0.10 m | 0.05 m |
+
+The last row is the part worth noticing. A tall block enters the frame *closer*
+than a flat one, because the camera sees its top first. So the same change that
+made the block reachable also halved the distance the base has to close with no
+vision — the stretch that produced the walk-away bug and that all the
+re-confirm-and-refuse machinery exists to survive.
+
+Two limits cap the height at 150 mm. The lidar plane is at 0.200 m and the
+costmaps inflate 0.55 m, so a block tall enough to be seen becomes an obstacle
+Nav2 routes around — the robot would refuse to approach the object it was sent
+to fetch. And the ground-plane back-projection divides by the height difference
+between the camera at 0.230 m and the plane, so it grows more sensitive as the
+block grows taller: 1.32× the cube's at 150 mm, and unbounded as the block
+approaches camera height.
+
+What this does **not** do is make the arm capable of the original task. A block
+on the floor is still out of the workspace. Fixing that needs a wider
+`shoulder_lift` stop or a longer forearm — a change to the robot, not to the
+code.
+
 ## 6. What obstacle avoidance actually guarantees
 
 Navigation is Nav2's, and the guarantee is narrower than it looks. A global
@@ -274,8 +317,10 @@ which is error handling rather than a proof.
 
 Two limits are worth stating because they are structural rather than tuning:
 
-- **The scan plane sits 0.20 m above the floor.** The blocks are 0.05 m cubes,
-  four times below it. They are invisible to navigation, which is why an early
+- **The scan plane sits 0.20 m above the floor.** The blocks stand 0.15 m, and
+  are deliberately kept below it —
+  a block the lidar could see would be an obstacle Nav2 plans around, and the
+  robot has to stand 0.25 m away to grasp one. They are invisible to navigation, which is why an early
   scene placed a block where the robot drove straight over it. Anything shorter
   than 0.20 m, and anything overhanging above it, is not an obstacle as far as
   Nav2 is concerned.

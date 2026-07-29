@@ -21,15 +21,23 @@ REST      = [0.0, -0.5, 1.2, 0.3]
 PRE_GRASP = [0.0,  0.6, 1.4, 0.5]
 GRASP     = [0.0,  0.9, 1.6, 0.5]
 LIFT      = [0.0,  0.0, 1.0, 0.3]
-# DROP puts the gripper 0.35 m ahead of base centre — over the table middle
-# when the base is touch-docked. The old release pose dropped blocks into
-# the robot/table gap.
+# DROP puts the gripper 0.405 m ahead of base centre and 0.289 m up — over the
+# table middle when the base is touch-docked. The old release pose dropped
+# blocks into the robot/table gap.
 DROP      = [0.0,  1.1, 0.6, 0.1]
 
-GRIPPER_OPEN = -0.015
-GRIPPER_CLOSED = -0.005
+# Half-openings, not raw joint commands: node.gripper() sends -v to the left
+# finger and +v to the right, so the gap between the finger faces is
+# 0.028 + 2v. The URDF's prismatic limits allow symmetric travel of only
+# +/- 0.005, which caps the gap at 0.038 m and is what sets the block's width.
+GRIPPER_OPEN = 0.005     # 0.038 m gap — 4 mm either side of a 30 mm block
+GRIPPER_CLOSED = 0.0     # 0.028 m gap — 2 mm of squeeze on it
 
-GRASP_REACH = 0.35   # the fixed arm poses reach ~0.35 m ahead of base centre
+# Where the fixed GRASP pose actually puts the finger pads: 0.254 m ahead of
+# base centre, 0.153 m up. Measured off the URDF by ros_backend.kinematics, not
+# guessed — the old value of 0.35 was never reachable at any height, and at
+# floor height nothing was. The pads straddle the top 22 mm of a 150 mm block.
+GRASP_REACH = 0.25
 PICK_RANGE = 1.3     # detection range is ~1.1 m; farther means stale detection
 TABLE_XY = (4.0, -2.5)
 TABLE_REACH = 0.20   # aims PAST the contact point: the stall guard is the stop

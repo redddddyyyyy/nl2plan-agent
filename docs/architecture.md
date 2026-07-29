@@ -226,7 +226,7 @@ times the headroom it needs.
 Two caveats on that comfort. First, it is a statement about a 5 kg uniform box
 carrying a 1 kg arm, not about hardware: the components that would move a real
 centre of mass are absent from the model, and a real 4-DOF arm with servos over
-a 0.35 m reach could plausibly be three times the modelled arm mass. Second, and
+a 0.4 m reach could plausibly be three times the modelled arm mass. Second, and
 because the chassis dominates, the result is *insensitive* to the thing that
 varies during a mission and *highly sensitive* to the thing that is synthetic.
 The analysis method is sound; the inputs are not yet real.
@@ -309,9 +309,11 @@ because Nav2's goal tolerance plus AMCL error routinely parks the robot 0.95 to
 
 **The manipulation constants are facts about one robot.** The four joint targets
 were measured on `mobile_arm_sim` and carry a comment telling me not to retune
-them here. `GRASP_REACH` is where those fixed poses happen to reach. There is no
-kinematic model, so a different arm invalidates all of it — this is what the
-planned MoveIt2 upgrade would fix.
+them here, and `GRASP_REACH` is where those fixed poses actually reach —
+measured off the URDF by `ros_backend/kinematics.py` rather than assumed, after
+the assumed value turned out to name a point the arm cannot occupy at any
+height. The solver exists now; `pick` and `place` still replay the fixed poses
+rather than calling it.
 
 **The known bugs are boundary bugs.** This is the part a modularity claim should
 be judged on, and it is not flattering. Of the six issues in

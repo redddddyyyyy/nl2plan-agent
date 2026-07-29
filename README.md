@@ -14,7 +14,7 @@ The pattern is the SayCan / PaLM-E lineage: the LLM does task-level reasoning, c
 
 *Both clips are from one recorded session, shown at 2× speed. Left: the last stretch of an approach and the grasp. Right: the base creeps until the stall guard reports contact with the table, then the arm releases.*
 
-Four 5 cm blocks sit one per area of a simulated house. Typed commands drive the robot to fetch any of them:
+Four coloured blocks sit one per area of a simulated house. Typed commands drive the robot to fetch any of them:
 
 ```
 $ nl2plan --interactive

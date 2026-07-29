@@ -229,22 +229,15 @@ def test_every_floor_level_solution_sits_on_the_lift_stop():
     assert q[1] == pytest.approx(ARM.lift_limit, abs=0.02)
 
 
-def test_grasp_reach_constant_is_past_anything_the_arm_can_service():
-    """Tracks the live constant rather than a copy of it.
+def test_no_reach_constant_could_have_served_a_floor_block():
+    """Why the block changed rather than the constant.
 
-    When GRASP_REACH is finally lowered this has to be revisited — that is the
-    point at which the arm stops claiming a reach it does not have.
+    Lowering GRASP_REACH was the plan's answer while the block was a 50 mm
+    cube. It was not an answer: there is no value it could have taken. The
+    live constant is checked against the live block in test_block_geometry.py;
+    this is only the record of why 0.35 could not simply be reduced.
     """
-    manipulation = pytest.importorskip(
-        "nl2plan_agent.ros_backend.manipulation",
-        reason="needs rclpy; the geometry claim is covered without it below")
-
-    assert manipulation.GRASP_REACH > 0.30
-    assert not kin.reachable(manipulation.GRASP_REACH, 0.0, 0.05, math.radians(-69))
-
-
-def test_the_value_thirty_five_centimetres_is_past_the_limit_without_ros():
-    """Same claim, hard-coded, for an environment with no rclpy."""
+    assert math.isnan(kin.max_forward_reach(math.radians(-69), 0.025))
     assert kin.max_forward_reach(math.radians(-69), 0.05) < 0.350
 
 

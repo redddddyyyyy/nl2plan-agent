@@ -3,13 +3,18 @@
 
 Fork of mobile_arm_sim's block_detector.py (that repo stays untouched): same
 back-projection pipeline, but run once per color band per frame, publishing
-/block_pose/<color> instead of the single red /target_block_pose. Detection
-range for a 5 cm cube is ~1.1 m; past that it is a dozen pixels and the
-size-distance gate rejects it.
+/block_pose/<color> instead of the single red /target_block_pose.
+
+The 30 x 150 mm bar presents 2.4x the silhouette the old 50 mm cube did, so it
+stays above the area threshold out to about 1.6 m and DIST_MAX now binds before
+pixel count does. That is the right way round: the range gate is a deliberate
+plausibility band, not an accident of resolution.
 """
 
 import cv2
 import numpy as np
+
+from perception_node.block_spec import BLOCK_CENTRE_Z, BLOCK_H, BLOCK_W
 
 # Red wraps around hue 0, so it takes two bands, kept tight because orange
 # and brown sit right against the low band. Orange and brown share hue
@@ -30,16 +35,22 @@ COLOR_BANDS = {
 }
 
 MIN_AREA = 400.0   # px^2 — below this it's a reflection or speckle
-GROUND_Z = 0.025   # block center height: 5 cm cube on the floor
-# Plausible projected range for a real floor block: past 1.4 m a 5 cm cube
-# is under the area threshold anyway, and nothing on the floor projects
-# inside 0.35 m. The floor lower bound sits BELOW the camera's true 0.45 m
-# blind edge on purpose: the ground-plane projection undershoots by about
-# 0.1 m, so a block 0.6 m out can project at 0.42 m — a 0.45 cutoff made
-# the robot blind in a ring just outside its own blind zone. The confirm
-# stage still rejects sub-0.45 m clusters (robot-frame, no undershoot),
-# which is what actually keeps the wall-trim phantom dead.
-DIST_MIN = 0.35
+
+# Block dimensions and why they are what they are: block_spec.py.
+GROUND_Z = BLOCK_CENTRE_Z   # plane the blob centroid is projected onto
+
+# Plausible projected range for a real block. The upper bound is unchanged:
+# the taller block is visible further, but widening the gate widens the
+# phantom window too, and the search poses sit 0.7-0.8 m out.
+#
+# The lower bound tracks the camera. A block only enters the frame when its
+# TOP does, and a 150 mm block's top clears the lower edge of view at 0.274 m
+# ahead of base centre against 0.367 m for the cube. 0.26 sits just BELOW that
+# edge, keeping the margin the old 0.35 had against its own 0.367, and for the
+# same reason: the projection undershoots, so a cutoff set at or above the true
+# edge blinds the robot in a ring just outside its own blind zone. The confirm
+# stage still gates on robot-frame distance, which has no undershoot.
+DIST_MIN = 0.26
 DIST_MAX = 1.4
 
 _KERNEL = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
@@ -166,7 +177,7 @@ class ColorBlockDetector(Node):
                 p_map = pixel_to_ground(u, v, self._K, R_mo, t_mo)
                 if p_map is None:
                     continue
-                # Size-distance consistency: a 5 cm cube at the projected
+                # Size-distance consistency: a block at the projected
                 # distance has a predictable pixel area. This is what stops
                 # the orange chairs and the wood floor being called blocks —
                 # and why candidates get tried in turn rather than only the
@@ -219,7 +230,15 @@ class ColorBlockDetector(Node):
         return quat_to_rot(q.x, q.y, q.z, q.w), np.array([t.x, t.y, t.z])
 
     def _block_sized(self, area, dist):
-        expected = (self._K[0, 0] * 0.05 / max(dist, 0.05)) ** 2
+        """Reject blobs whose pixel area doesn't match a block at that range.
+
+        The silhouette is a standing rectangle now, not a square, so the
+        expected area is width x height rather than one side squared. Viewed
+        off-axis two faces show and the silhouette widens by up to sqrt(2);
+        that sits inside the 4x ceiling.
+        """
+        scale = self._K[0, 0] / max(dist, 0.05)
+        expected = scale * scale * BLOCK_W * BLOCK_H
         return 0.3 * expected <= area <= 4.0 * expected
 
 

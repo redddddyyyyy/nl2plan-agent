@@ -13,8 +13,8 @@ After the creep, `align` re-reads the AMCL pose and computes a fresh bearing to
 the target's *map* coordinate — but that coordinate was derived from an AMCL fix
 taken before the creep started. If the estimate corrects itself in between, the
 trim rotates by the correction instead of toward the block, and the fixed arm
-poses then reach beside it. At 0.35 m of reach, a 10 deg error is already wider
-than the 5 cm block.
+poses then reach beside it. At 0.25 m of reach, a 10 deg error is already wider
+than the 30 mm block.
 
 This is the same mistake that caused the false pick refusals fixed earlier the
 same day, in the one place that was not audited. It never fired across twelve

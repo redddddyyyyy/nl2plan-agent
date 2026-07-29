@@ -123,9 +123,22 @@ class BackendNode(Node):
         msg.data = [float(p) for p in positions]
         self.arm_pub.publish(msg)
 
-    def gripper(self, opening):
+    def gripper(self, half_opening):
+        """Drive the fingers apart by `half_opening` each, about the palm centre.
+
+        The two commands have to be opposites. Both finger joints declare
+        `axis="1 0 0"` in the URDF and mirror only their *origin*, so sending
+        the same number to both — which this did until 2026-07-29 — slides the
+        pair sideways in unison and never changes the gap between them at all.
+        It sat at 28 mm for every value of GRIPPER_OPEN and GRIPPER_CLOSED
+        alike, which is why nothing ever visibly gripped.
+
+        Controller joint order is [left_finger_joint, right_finger_joint], from
+        controllers.yaml. Left is the one at negative x, so it takes the
+        negative command. Gap between the finger faces is 0.028 + 2*half_opening.
+        """
         msg = Float64MultiArray()
-        msg.data = [float(opening), float(opening)]
+        msg.data = [-float(half_opening), float(half_opening)]
         self.gripper_pub.publish(msg)
 
 

@@ -31,19 +31,26 @@ MAX_SPREAD_M = 0.2
 CROSS_VETO_M = 0.35
 CROSS_VETO_FRESH_S = 3.0
 # Plausibility band for a confirmed cluster's distance from the robot. The
-# camera can't see the floor inside 0.45 m; elevated red decals (the
-# bedroom bin's stars) break the ground-plane projection and confirm
-# outside this band — measured live 2026-07-18 before this gate existed.
+# floor is invisible inside 0.413 m — camera 0.23 m up, pitched 20 deg down,
+# 54.3 deg of vertical FOV — and 0.45 was that edge with margin. A block only
+# enters the frame when its TOP does, so the 150 mm block clears the same edge
+# at 0.274 m and the floor number no longer governs. 0.30 is that with the same
+# margin. This is what shrinks the blind creep: the base now has to close from
+# 0.30 to GRASP_REACH = 0.25 without vision, 0.05 m rather than the 0.10 m it
+# crept when the block was a cube the arm could not have reached anyway.
+# Elevated red decals (the bedroom bin's stars) break the ground-plane
+# projection and confirm outside this band — measured live 2026-07-18 before
+# this gate existed.
 # The ceiling is set by where Nav2 actually parks, not by the nominal
 # search poses: blocks sit 0.7-0.8 m from those, but goal tolerance plus
 # AMCL error routinely leaves the robot ~1.0-1.2 m out, and a 0.95 ceiling
 # rejected TRUE sightings there (measured live 2026-07-21: real clusters
 # at 0.954-1.185 m across gym, lounge and sofa — the "robot stares at the
 # block then walks away" bug). Phantom risk at the wider ceiling is thin:
-# the detector's own 0.45-1.4 m projection band and size-distance gate now
+# the detector's own 0.28-1.4 m projection band and size-distance gate now
 # kill the bin-decal/wall-trim phantoms upstream (three clean red scans at
 # the bedroom pose, 2026-07-21, zero phantom clusters).
-CONFIRM_DIST_MIN = 0.45
+CONFIRM_DIST_MIN = 0.30
 CONFIRM_DIST_MAX = 1.30
 
 # Post-mortem of the most recent scan_for/confirm_here call. The tool result
@@ -112,7 +119,7 @@ def _confirm(node, color: str) -> Optional[dict]:
                         # between cannot steer the creep into empty floor.
                         return {"x": x, "y": y, "rel": rel}
                     # Four sightings scattered past 20 cm are not a parked
-                    # 5 cm cube — a phantom, not the block.
+                    # 150 mm bar — a phantom, not the block.
                     _note("spread", spread=cluster_spread(rel_samples))
                     return None
         time.sleep(0.1)

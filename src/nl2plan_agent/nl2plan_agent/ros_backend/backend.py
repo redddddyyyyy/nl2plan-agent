@@ -16,7 +16,7 @@ from .logic import (COLOR_ENTITIES, from_robot_frame, parse_color, pick_error,
                     standoff_pose)
 from .node import get_node
 
-REFINE_STANDOFF = 0.6   # m: outside the 0.45 m blind zone, prime viewing
+REFINE_STANDOFF = 0.6   # m: outside the 0.30 m blind zone, prime viewing
 
 _DEFAULT_POSES = Path(__file__).resolve().parents[4] / "config" / "named_poses.yaml"
 
