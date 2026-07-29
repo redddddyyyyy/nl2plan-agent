@@ -105,15 +105,44 @@ the link lengths out of the URDF joint origins:
 | --- | --- |
 | L1, shoulder-lift to elbow | 0.150 m |
 | L2, elbow to wrist | 0.120 m |
-| L3, wrist to gripper tip | 0.105 m |
+| L3, wrist to the centre of the finger pads | 0.105 m |
 | kinematic maximum, L1+L2+L3 | 0.375 m |
 | shoulder pivot, forward of base centre | 0.050 m |
-| **maximum forward tip reach** | **0.425 m** |
+| shoulder pivot, above the floor | 0.260 m |
 
-`GRASP_REACH` sits at 82% of the kinematic maximum. The empirical constant and
-the geometry agree, and the margin is sensible rather than accidental — reaching
-at full extension would leave no room for the approach error the standoff exists
-to absorb.
+L3 stops at the middle of the finger pads rather than at the fingertips, because
+the pads are where a block is actually held. The tips are 0.130 m out.
+
+Straight out horizontally the gripper reaches 0.050 + 0.375 = 0.425 m from base
+centre. I first compared `GRASP_REACH` against that, got 82%, and concluded the
+constant had a sensible margin. That comparison is wrong, and the error is worth
+leaving on the page: 0.425 m is the reach at pivot height, 0.260 m up in the
+air, and the blocks are on the floor.
+
+A block centre sits at z = 0.025 m, which is 0.235 m below the pivot. The arm
+has to spend reach getting down there, so the forward distance available at
+floor level is
+
+```
+x_max = 0.050 + √(0.375² − 0.235²) = 0.050 + 0.292 = 0.342 m
+```
+
+`GRASP_REACH = 0.350 m` is 8 mm past that — and 0.342 m is itself the figure at
+full extension with the arm pointing straight along the line to the block rather
+than down at it. Ask for an approach pitch you could actually close a gripper
+from and it gets worse, because the wrist link is then spent on orientation
+instead of reach:
+
+| Approach pitch | Max forward reach at floor level |
+| --- | --- |
+| −90° (straight down) | 0.287 m |
+| −60° | 0.331 m |
+| −45° | 0.341 m |
+| −30° | 0.340 m |
+
+So a reach the arm can honestly service is 0.28–0.30 m, five to seven
+centimetres closer than the constant asks for. The constant survives today only
+because the grasp is a teleport pin — see section 5.
 
 ## 5. What the arm does not do
 
@@ -127,21 +156,63 @@ the block where the arm already goes, and that is why the approach protocol is
 as elaborate as it is: navigate to a standoff, re-confirm, creep the last
 fraction of a metre, refuse if the creep stalls.
 
+It is worth being plainer still about how far the fixed poses fall short. Run
+the URDF's own forward kinematics on them and the centre of the finger pads
+lands here, in `base_footprint`:
+
+| Pose | x ahead of base centre | z above the floor |
+| --- | --- | --- |
+| REST | 0.144 m | 0.540 m |
+| PRE_GRASP | 0.307 m | 0.250 m |
+| GRASP | 0.254 m | 0.153 m |
+| LIFT | 0.252 m | 0.503 m |
+| DROP | 0.405 m | 0.289 m |
+
+A floor block is at z = 0.025 m. The `GRASP` pose stops 0.10 m short of
+`GRASP_REACH` horizontally and 0.13 m above the block, so the gripper never
+arrives; the pin does the entire grasp, not just the last few millimetres.
+`PRE_GRASP` reaches further forward than `GRASP` does, which makes the "grasp"
+motion a retract-and-lower rather than a reach. Two comments in
+`manipulation.py` claim these poses reach 0.35 m — they do not, and section 4
+explains where that number came from.
+
 The closed form for this arm is short, and implementing it is the next
-manipulation task. For a target `(x, y, z)` in the base frame with a chosen
-gripper approach pitch `φ`:
+manipulation task. For a target `(x, y, z)` in `base_footprint` with a chosen
+gripper approach pitch `φ`, measured from horizontal and negative downwards:
 
 ```
-θ₁ = atan2(y, x)                                  pan
-ρ  = √(x² + y²) − 0.05                            radial distance from pivot
-ζ  = z − 0.26                                     height above pivot
-ρ_w = ρ − L3·cos φ                                wrist position
+θ₁ = atan2(y, x − 0.05)                           pan
+ρ  = √((x − 0.05)² + y²)                          radial distance from the pan axis
+ζ  = z − 0.26                                     height above the lift pivot
+ρ_w = ρ − L3·cos φ                                wrist point
 ζ_w = ζ − L3·sin φ
 c₃ = (ρ_w² + ζ_w² − L1² − L2²) / (2·L1·L2)
 θ₃ = ±acos(c₃)                                    elbow, two solutions
-θ₂ = atan2(ζ_w, ρ_w) − atan2(L2·sin θ₃, L1 + L2·cos θ₃)
-θ₄ = φ − θ₂ − θ₃                                  wrist
+θ₂ = atan2(ρ_w, ζ_w) − atan2(L2·sin θ₃, L1 + L2·cos θ₃)
+θ₄ = (π/2 − φ) − θ₂ − θ₃                          wrist
 ```
+
+Two details in there are easy to get backwards, and both of them aim the arm at
+empty floor rather than failing loudly.
+
+The first is the 0.050 m offset. `arm_base` is mounted 0.050 m forward of base
+centre and the pan joint sits on top of it, so the offset comes *before* the
+rotation: the pan axis is the vertical line through x = 0.050, and the pan angle
+is measured from there. Subtracting 0.050 from `√(x² + y²)` instead treats the
+offset as radial, which is the same thing only when y = 0.
+
+The second is where the joints read zero. Every arm joint rotates about the
+model's +y axis and every link extends along its own +z, so at all-zero the arm
+points straight up, not straight ahead. The chain is therefore
+
+```
+ρ = L1·sin θ₂ + L2·sin(θ₂+θ₃) + L3·sin(θ₂+θ₃+θ₄)
+ζ = L1·cos θ₂ + L2·cos(θ₂+θ₃) + L3·cos(θ₂+θ₃+θ₄)
+```
+
+with sine and cosine the opposite way round from the usual planar-arm textbook
+form, and the gripper's pitch is φ = π/2 − (θ₂+θ₃+θ₄). Write it the textbook way
+and every solution comes out 90° off.
 
 The part worth having is the reachability condition, because it would let the
 arm refuse an impossible target instead of reaching for it. A solution exists
