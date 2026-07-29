@@ -119,30 +119,49 @@ constant had a sensible margin. That comparison is wrong, and the error is worth
 leaving on the page: 0.425 m is the reach at pivot height, 0.260 m up in the
 air, and the blocks are on the floor.
 
-A block centre sits at z = 0.025 m, which is 0.235 m below the pivot. The arm
-has to spend reach getting down there, so the forward distance available at
-floor level is
+A block centre sits at z = 0.025 m, which is 0.235 m below the pivot. Spend the
+links on getting down there and the forward distance left is
 
 ```
 x_max = 0.050 + √(0.375² − 0.235²) = 0.050 + 0.292 = 0.342 m
 ```
 
-`GRASP_REACH = 0.350 m` is 8 mm past that — and 0.342 m is itself the figure at
-full extension with the arm pointing straight along the line to the block rather
-than down at it. Ask for an approach pitch you could actually close a gripper
-from and it gets worse, because the wrist link is then spent on orientation
-instead of reach:
+That would already put `GRASP_REACH = 0.350 m` 8 mm past the limit. But 0.342 m
+is still too generous, because it only asks whether the links are long enough.
+It does not ask whether the joints can bend that way, and here they cannot.
 
-| Approach pitch | Max forward reach at floor level |
-| --- | --- |
-| −90° (straight down) | 0.287 m |
-| −60° | 0.331 m |
-| −45° | 0.341 m |
-| −30° | 0.340 m |
+`shoulder_lift` stops at ±1.57. The upper arm can reach horizontal and no
+further, so every centimetre of downward travel has to come from the elbow and
+the wrist alone. Solving the full inverse kinematics with the stops enforced —
+`ros_backend/kinematics.py`, checked against the URDF joint by joint — gives
+this:
 
-So a reach the arm can honestly service is 0.28–0.30 m, five to seven
-centimetres closer than the constant asks for. The constant survives today only
-because the grasp is a teleport pin — see section 5.
+| Height above the floor | Best approach pitch | Max forward reach |
+| --- | --- | --- |
+| 0.025 m (block centre) | — | **unreachable** |
+| 0.035 m | — | **unreachable** |
+| 0.050 m (block top) | −69° | 0.280 m |
+| 0.075 m | −55° | 0.328 m |
+| 0.100 m | −45° | 0.358 m |
+| 0.150 m | −29° | 0.396 m |
+| 0.260 m (pivot height) | 0° | 0.425 m |
+
+The bottom row is the 0.425 m from earlier, which is a fair check that the
+solver and the tape measure agree. The top rows are the finding: **the arm
+cannot put its gripper on a block sitting on the floor.** The lowest the finger
+pads go anywhere in the workspace is 0.035 m, and a block centre is at 0.025 m.
+There is no distance and no approach angle that fixes it.
+
+A block is a 0.05 m cube, so it does span up to z = 0.050 m, and the pads can
+just get into the top of that at 0.280 m forward — gripping the top corner of
+the block rather than closing around it, with `shoulder_lift` pinned against its
+stop for the whole motion. That is the honest ceiling for a reach constant:
+about 0.28 m, and even there the arm has no margin left to absorb approach
+error, which is the thing the standoff exists to absorb.
+
+So `GRASP_REACH = 0.350 m` is not slightly optimistic. It asks for 7 cm more
+than the arm has, at a height the arm cannot reach at all. The constant survives
+today only because the grasp is a teleport pin — see section 5.
 
 ## 5. What the arm does not do
 
@@ -176,9 +195,12 @@ motion a retract-and-lower rather than a reach. Two comments in
 `manipulation.py` claim these poses reach 0.35 m — they do not, and section 4
 explains where that number came from.
 
-The closed form for this arm is short, and implementing it is the next
-manipulation task. For a target `(x, y, z)` in `base_footprint` with a chosen
-gripper approach pitch `φ`, measured from horizontal and negative downwards:
+The closed form for this arm is short. It now lives in
+`ros_backend/kinematics.py`, with the joint stops enforced and its constants
+checked against the URDF's joint origins by a test; what has not happened yet is
+`pick` and `place` calling it instead of replaying the fixed poses. For a target
+`(x, y, z)` in `base_footprint` with a chosen gripper approach pitch `φ`,
+measured from horizontal and negative downwards:
 
 ```
 θ₁ = atan2(y, x − 0.05)                           pan
@@ -215,14 +237,20 @@ form, and the gripper's pitch is φ = π/2 − (θ₂+θ₃+θ₄). Write it the
 and every solution comes out 90° off.
 
 The part worth having is the reachability condition, because it would let the
-arm refuse an impossible target instead of reaching for it. A solution exists
-exactly when the wrist point lies in the annulus the two proximal links can
-span:
+arm refuse an impossible target instead of reaching for it. The wrist point has
+to lie in the annulus the two proximal links can span:
 
 ```
 |L1 − L2| ≤ √(ρ_w² + ζ_w²) ≤ L1 + L2
   0.030 m ≤        reach      ≤ 0.270 m
 ```
+
+That condition is necessary and it is not sufficient, which is the mistake
+section 4 originally made. Every floor-level target in the table there sits
+comfortably inside the annulus and is still unreachable, because the solution
+the annulus admits needs `shoulder_lift` past 1.57. A reachability check has to
+solve for the angles and test them against the stops; the annulus on its own
+will happily wave through a target the arm cannot bend to.
 
 Three joints in the plane against two positional degrees of freedom makes the
 arm redundant by one; fixing the approach pitch removes the redundancy and makes
