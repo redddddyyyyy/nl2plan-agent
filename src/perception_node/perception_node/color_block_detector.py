@@ -106,6 +106,28 @@ def pixel_to_ground(u, v, K, R_mo, t_mo, ground_z=GROUND_Z):
     return t_mo + s * ray_map
 
 
+def image_to_bgr(msg):
+    """sensor_msgs/Image -> a BGR ndarray, without cv_bridge.
+
+    cv_bridge's conversion is a compiled extension built against NumPy 1.x. On
+    NumPy 2 it raises `AttributeError: _ARRAY_API not found` on every frame,
+    which takes the detector down silently — the node stays alive, publishes
+    nothing, and the robot simply never sees a block. That is a bad failure to
+    inherit from a dependency for one reshape.
+
+    The Gazebo camera publishes R8G8B8, so the work is a reshape and a channel
+    swap. `step` rather than `width` sets the row stride: a padded row would
+    otherwise shear the image diagonally.
+    """
+    if msg.encoding not in ('rgb8', 'bgr8'):
+        raise ValueError(f'unsupported image encoding {msg.encoding!r}')
+    rows = np.frombuffer(msg.data, dtype=np.uint8).reshape(msg.height, msg.step)
+    px = rows[:, :msg.width * 3].reshape(msg.height, msg.width, 3)
+    # Contiguous copy: frombuffer is read-only, and the rgb8 flip leaves a
+    # negative stride that OpenCV will not take.
+    return np.ascontiguousarray(px[:, :, ::-1] if msg.encoding == 'rgb8' else px)
+
+
 def quat_to_rot(x, y, z, w):
     """3x3 rotation matrix from a quaternion; enough numpy to skip scipy."""
     return np.array([
@@ -120,7 +142,6 @@ def quat_to_rot(x, y, z, w):
 try:
     import rclpy
     import tf2_ros
-    from cv_bridge import CvBridge
     from geometry_msgs.msg import PoseStamped
     from rclpy.duration import Duration
     from rclpy.node import Node
@@ -137,7 +158,6 @@ class ColorBlockDetector(Node):
         super().__init__('color_block_detector')
         self.declare_parameter('min_area', MIN_AREA)
 
-        self._bridge = CvBridge()
         self._K = None
         self._cam_frame = None
         self._tf_buffer = tf2_ros.Buffer()
@@ -164,7 +184,7 @@ class ColorBlockDetector(Node):
             self.get_logger().info('waiting for /camera/camera_info',
                                    throttle_duration_sec=5.0)
             return
-        bgr = self._bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+        bgr = image_to_bgr(msg)
         hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
         cam = self._camera_pose(msg.header.stamp)
         if cam is None:
