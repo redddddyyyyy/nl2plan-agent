@@ -12,19 +12,31 @@ import math
 import time
 from typing import Optional
 
-import rclpy
-import tf2_ros
 from geometry_msgs.msg import Twist
+
+from .node import CARRY_HOLD_BELOW_PADS
 
 # Arm poses (shoulder_pan, shoulder_lift, elbow, wrist).
 REST      = [0.0, -0.5, 1.2, 0.3]
 PRE_GRASP = [0.0,  0.6, 1.4, 0.5]
 GRASP     = [0.0,  0.9, 1.6, 0.5]
 LIFT      = [0.0,  0.0, 1.0, 0.3]
-# DROP puts the gripper 0.405 m ahead of base centre and 0.289 m up — over the
-# table middle when the base is touch-docked. The old release pose dropped
-# blocks into the robot/table gap.
-DROP      = [0.0,  1.1, 0.6, 0.1]
+# DROP is the one pose here that was not measured on the simulator. It is
+# solved, by ros_backend.kinematics, for pads at (0.370, 0.313) in
+# base_footprint at a -30 deg approach — 0.370 m being where the table's centre
+# sits once the base has touch-docked against it (0.22 m to the front of the
+# camera housing, plus the table's 0.15 m half-width).
+#
+# The measured pose it replaces, [0.0, 1.1, 0.6, 0.1], put the pads at 0.289 m.
+# That was fine while a held block hung at the palm, and became 14 mm of
+# interpenetration with the table top once the pin started holding the block
+# where the pads really grip it. The two errors had been cancelling: the pin
+# carried the block 0.133 m too high and DROP released it too low, so blocks
+# landed correctly for the wrong reason. Fixing either alone breaks placing.
+#
+# 0.313 m clears the 0.15 m table top by 10 mm with a 150 mm block held below
+# the pads, and every joint sits at least 0.75 rad inside its stop.
+DROP      = [0.0,  0.814, 0.733, 0.547]
 
 # Half-openings, not raw joint commands: node.gripper() sends -v to the left
 # finger and +v to the right, so the gap between the finger faces is
@@ -144,22 +156,25 @@ def attach(node, entity: str):
 
 
 def detach(node, entity: str):
-    """Stop the pin, then park the block in clear air 8 cm below the gripper.
+    """Stop the pin and leave the block exactly where it was being held.
 
-    Cut loose at the gripper origin the block sits inside the palm's
-    collision box and the next arm swing bats it off the table. Pin stops
-    FIRST so a racing 20 Hz tick can't overwrite the release teleport.
+    The old version parked it 8 cm below the gripper origin, because a block
+    pinned at that origin sat inside the palm's collision box and the next arm
+    swing batted it off the table. The pin now holds the block below the pads
+    instead, already clear of the palm, so the release needs no offset — and
+    adding one would drop the block through the table it is being placed on.
+
+    Pin stops FIRST so a racing 20 Hz tick can't overwrite the release
+    teleport. Writing the pose again rather than simply unpinning is deliberate:
+    it makes the handover to physics explicit at a known pose instead of
+    whatever the last tick happened to write.
     """
     node.pinned_entity = None
-    try:
-        t = node.tf_buffer.lookup_transform('base_footprint', 'gripper_base',
-                                            rclpy.time.Time())
-        node.set_entity_rel(entity,
-                            t.transform.translation.x,
-                            t.transform.translation.y,
-                            t.transform.translation.z - 0.08)
-    except tf2_ros.TransformException:
-        pass
+    pads = node.pad_centre()
+    if pads is None:
+        return
+    node.set_entity_rel(entity, pads[0], pads[1],
+                        pads[2] - CARRY_HOLD_BELOW_PADS)
 
 
 def grasp_sequence(node, entity: str):

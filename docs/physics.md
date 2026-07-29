@@ -300,6 +300,35 @@ on the floor is still out of the workspace. Fixing that needs a wider
 `shoulder_lift` stop or a longer forearm — a change to the robot, not to the
 code.
 
+### Two errors in placing that had been cancelling
+
+Checking `place` against the new block turned up a pair worth recording,
+because neither is visible while the other is present.
+
+The pin held the block's centre at `gripper_base`, the wrist flange. A block
+gripped by the pads does not sit there — the pads are 0.055 m further along the
+gripper axis, and a 150 mm block hangs with its centre 0.078 m below them. So
+the instant the grasp fired, the block jumped **0.133 m**. That is the visible
+teleport in the recorded clips. Worse, it parked the block spanning
+0.133–0.283 m while the robot stood a quarter-metre away, straddling the
+0.200 m lidar plane — the robot inflating a costmap obstacle around its own
+payload.
+
+`DROP`, meanwhile, put the pads at 0.289 m. Held correctly, a 150 mm block
+would hang to 0.136 m and drive **14 mm into a table whose top is at 0.150 m**.
+
+The two cancelled exactly. Carrying the block 0.133 m too high and releasing it
+from a pose 14 mm too low landed it on the table for the wrong reason, and
+fixing either alone breaks placing. So both moved together: the pin now holds
+the block below the pads, and `DROP` is solved rather than measured — pads at
+(0.370, 0.313), which is the table's centre once the base has touch-docked, and
+10 mm of clearance over its top. Grasping now moves the block 0.2 mm instead of
+133.
+
+One consequence is new and correct rather than a bug: a placed block spans
+0.150–0.300 m, so it stands *through* the lidar plane and is a genuine obstacle
+from then on. A block on a table should be.
+
 ## 6. What obstacle avoidance actually guarantees
 
 Navigation is Nav2's, and the guarantee is narrower than it looks. A global

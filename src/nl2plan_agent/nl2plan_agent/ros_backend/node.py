@@ -30,9 +30,33 @@ from std_msgs.msg import Float64MultiArray
 from .logic import KNOWN_COLORS
 
 
+# How far below the middle of the finger pads a held block's centre sits.
+#
+# The GRASP pose puts the pads at z = 0.1532 and the block stands 0.150 tall,
+# so the pads close on its top 22 mm and its centre is 0.0782 m lower. Pinning
+# it there means grasping does not move the block at all. Checked against the
+# block geometry and the GRASP pose in tests/test_block_geometry.py, which is
+# what catches this going stale if either changes.
+CARRY_HOLD_BELOW_PADS = 0.078
+
+
 def _yaw(q) -> float:
     return math.atan2(2 * (q.w * q.z + q.x * q.y),
                       1 - 2 * (q.y * q.y + q.z * q.z))
+
+
+def _rotate(q, v) -> tuple:
+    """Rotate vector `v` by quaternion `q`, via v + 2s(u x v) + 2(u x (u x v))."""
+    ux, uy, uz, s = q.x, q.y, q.z, q.w
+    cx = uy * v[2] - uz * v[1]
+    cy = uz * v[0] - ux * v[2]
+    cz = ux * v[1] - uy * v[0]
+    ccx = uy * cz - uz * cy
+    ccy = uz * cx - ux * cz
+    ccz = ux * cy - uy * cx
+    return (v[0] + 2 * s * cx + 2 * ccx,
+            v[1] + 2 * s * cy + 2 * ccy,
+            v[2] + 2 * s * cz + 2 * ccz)
 
 
 class BackendNode(Node):
@@ -100,18 +124,45 @@ class BackendNode(Node):
         req.state.reference_frame = 'mobile_arm'
         self._set_state_cli.call_async(req)
 
-    def _teleport_pinned(self):
-        if self.pinned_entity is None or not self._set_state_cli.service_is_ready():
-            return
+    def pad_centre(self) -> Optional[tuple]:
+        """Middle of the finger pads in base_footprint — where a block is held.
+
+        `gripper_base` is 0.055 m short of it along the gripper's own axis, and
+        that axis swings from near-vertical at GRASP to 30 degrees off
+        horizontal at DROP, so the difference is not a constant offset in z.
+        """
         try:
             t = self.tf_buffer.lookup_transform('base_footprint', 'gripper_base',
                                                 rclpy.time.Time())
         except tf2_ros.TransformException:
+            return None
+        p, r = t.transform.translation, t.transform.rotation
+        dx, dy, dz = _rotate(r, (0.0, 0.0, 0.055))
+        return (p.x + dx, p.y + dy, p.z + dz)
+
+    def _teleport_pinned(self):
+        """Hold the block where the pads actually closed on it.
+
+        Pinning the block's centre to `gripper_base`, which is what this did
+        until 2026-07-29, teleported it 0.133 m upward the instant the grasp
+        fired — visible on video, and it parked the block straddling the
+        0.20 m lidar plane a quarter-metre in front of the robot, which paints
+        a costmap obstacle with a 0.55 m inflation skirt around the robot's own
+        payload. Holding it below the pads instead means the block does not
+        move at all when it is grasped, which is what a pin should mean.
+
+        Orientation is left upright rather than following the gripper. The
+        gripper is nearly horizontal at DROP and a rigidly-held bar would be
+        carried on its side; keeping it level is the cruder model but it is the
+        one the rest of the place sequence is built around.
+        """
+        if self.pinned_entity is None or not self._set_state_cli.service_is_ready():
+            return
+        pads = self.pad_centre()
+        if pads is None:
             return
         self.set_entity_rel(self.pinned_entity,
-                            t.transform.translation.x,
-                            t.transform.translation.y,
-                            t.transform.translation.z)
+                            pads[0], pads[1], pads[2] - CARRY_HOLD_BELOW_PADS)
 
     # ---------- actuators ----------
 

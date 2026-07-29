@@ -128,6 +128,110 @@ def test_the_camera_sees_the_block_before_the_arm_needs_it():
     assert 0.0 <= blind <= 0.06, f"blind creep is {blind:.3f} m"
 
 
+# --------------------------------------------------------------------------
+# Carrying and placing
+# --------------------------------------------------------------------------
+
+TABLE_TOP = 0.15            # table.sdf: 0.30 x 0.30 x 0.15 spawned at z=0.075
+TABLE_HALF_WIDTH = 0.15
+ROBOT_NOSE = 0.22           # camera housing front face, ahead of base centre
+TABLE_AHEAD = ROBOT_NOSE + TABLE_HALF_WIDTH     # once touch-docked
+BLOCK_RESTS_AT = TABLE_TOP + BLOCK_H / 2
+
+
+def _pad_z(pose):
+    return kin.forward(tuple(pose))[2]
+
+
+def _held_centre(pose):
+    """Where the pin holds the block's centre, for a given arm pose."""
+    node = pytest.importorskip("nl2plan_agent.ros_backend.node",
+                               reason="needs rclpy")
+    return _pad_z(pose) - node.CARRY_HOLD_BELOW_PADS
+
+
+def test_the_pin_offset_matches_the_grasp_it_was_derived_from():
+    """CARRY_HOLD_BELOW_PADS has to be the real pad-to-block-centre distance.
+
+    If it drifts from the grasp geometry, grasping teleports the block — which
+    is exactly what it used to do, by 0.133 m, when the block was pinned to
+    gripper_base instead.
+    """
+    manipulation = pytest.importorskip(
+        "nl2plan_agent.ros_backend.manipulation", reason="needs rclpy")
+
+    assert _held_centre(manipulation.GRASP) == pytest.approx(BLOCK_H / 2, abs=0.002)
+
+
+def test_grasping_does_not_move_the_block():
+    """The point of a pin: at the moment it fires, nothing should jump."""
+    manipulation = pytest.importorskip(
+        "nl2plan_agent.ros_backend.manipulation", reason="needs rclpy")
+
+    jump = abs(_held_centre(manipulation.GRASP) - BLOCK_H / 2)
+    assert jump < 0.005, f"the block teleports {jump * 1000:.0f} mm on grasp"
+
+
+def test_a_carried_block_clears_the_lidar_plane_at_the_grasp():
+    """A held block across the scan plane is the robot fouling its own costmap.
+
+    At 0.25 m ahead with a 0.55 m inflation radius, the robot would inflate an
+    obstacle over itself. The block must sit below the plane while the arm is
+    still down, and above it once lifted.
+    """
+    manipulation = pytest.importorskip(
+        "nl2plan_agent.ros_backend.manipulation", reason="needs rclpy")
+
+    assert _held_centre(manipulation.GRASP) + BLOCK_H / 2 <= LIDAR_PLANE_Z
+    assert _held_centre(manipulation.LIFT) - BLOCK_H / 2 >= LIDAR_PLANE_Z
+
+
+def test_drop_holds_the_block_clear_of_the_table_top():
+    """The bug that fixing the pin alone would have introduced."""
+    manipulation = pytest.importorskip(
+        "nl2plan_agent.ros_backend.manipulation", reason="needs rclpy")
+
+    bottom = _held_centre(manipulation.DROP) - BLOCK_H / 2
+    assert bottom > TABLE_TOP, (
+        f"DROP drives the block {(TABLE_TOP - bottom) * 1000:.0f} mm "
+        "into the table")
+    assert bottom - TABLE_TOP <= 0.03, "released from higher than 30 mm it topples"
+
+
+def test_drop_puts_the_block_over_the_table_rather_than_its_edge():
+    manipulation = pytest.importorskip(
+        "nl2plan_agent.ros_backend.manipulation", reason="needs rclpy")
+
+    x = kin.forward(tuple(manipulation.DROP))[0]
+    overhang = abs(x - TABLE_AHEAD) + BLOCK_W / 2
+    assert overhang < TABLE_HALF_WIDTH, (
+        f"block lands {overhang:.3f} m from table centre, past its "
+        f"{TABLE_HALF_WIDTH} m half-width")
+
+
+def test_the_release_is_a_short_drop_onto_the_table():
+    """detach leaves the block where it was held, so the fall must be small."""
+    manipulation = pytest.importorskip(
+        "nl2plan_agent.ros_backend.manipulation", reason="needs rclpy")
+
+    fall = _held_centre(manipulation.DROP) - BLOCK_RESTS_AT
+    assert 0.0 <= fall <= 0.02, f"the block falls {fall * 1000:.0f} mm"
+
+
+def test_every_arm_pose_stays_inside_the_joint_stops():
+    """DROP is solved rather than measured now, so this is worth stating."""
+    manipulation = pytest.importorskip(
+        "nl2plan_agent.ros_backend.manipulation", reason="needs rclpy")
+
+    for name in ("REST", "PRE_GRASP", "GRASP", "LIFT", "DROP"):
+        q = tuple(getattr(manipulation, name))
+        assert ARM.within_limits(q), f"{name} is past a stop"
+        margin = min(ARM.lift_limit - abs(q[1]), ARM.elbow_limit - abs(q[2]),
+                     ARM.wrist_limit - abs(q[3]))
+        if name == "DROP":
+            assert margin >= 0.5, f"DROP has only {margin:.2f} rad of margin"
+
+
 def test_grasp_reach_is_where_the_fixed_pose_actually_goes():
     """GRASP_REACH has to name a real position, which it did not before today."""
     manipulation = pytest.importorskip(
