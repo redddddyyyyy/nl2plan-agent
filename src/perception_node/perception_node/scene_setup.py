@@ -17,12 +17,15 @@ They also spawn clustered, and brown-vs-orange is a pair the camera genuinely
 confuses up close (same hue; orange's antialiased rim sheds brown-band pixels),
 so each one goes to its own room.
 
-Rather than edit the sim repo for either, do it here: delete the entity, spawn
-our own SDF under the same name, at the right place. Same reason the placement
-has always been done from this side — mobile_arm_sim is shared, and its own
-demo depends on those files.
+Doing it from this side rather than editing mobile_arm_sim: the block is a
+property of this task, not of the robot platform. The simulator package
+describes a robot and a house, and it is reused by a demo that does not care
+what shape the objects are. Keeping the object here means the two can change
+independently, and it keeps this fix in the same repository as the kinematics
+that motivate it.
 
-World-frame placement is fine here — scene setup, not the carried-block pin.
+World-frame placement is fine here, since this is scene setup rather than the
+carried-block pin.
 """
 
 import rclpy
