@@ -66,6 +66,27 @@ class ArmGeometry:
                 and abs(elbow) <= self.elbow_limit
                 and abs(wrist) <= self.wrist_limit)
 
+    def stop_margin(self, q: Joints) -> float:
+        """How much room the tightest of the three pitch joints has left.
+
+        Non-negative exactly when `within_limits` holds, so it is a graded
+        version of the same test: zero means a joint is sitting on its stop,
+        and larger is further from any of them.
+
+        The pan is excluded deliberately. It does not depend on the approach
+        pitch, so including it could only cap the objective in
+        `redundancy.py` with a constant and flatten the very thing that
+        search is trying to distinguish. `pan_margin` reports it separately.
+        """
+        _, lift, elbow, wrist = q
+        return min(self.lift_limit - abs(lift),
+                   self.elbow_limit - abs(elbow),
+                   self.wrist_limit - abs(wrist))
+
+    def pan_margin(self, q: Joints) -> float:
+        """The pan's room to its stop. Fixed by the target, not by the pitch."""
+        return self.pan_limit - abs(q[0])
+
 
 ARM = ArmGeometry(
     pivot_x=0.050, pivot_z=0.260,
@@ -117,19 +138,19 @@ def pitch_of(q: Joints, arm: ArmGeometry = ARM) -> float:
     return _wrap(math.pi / 2 - total)
 
 
-def inverse(x: float, y: float, z: float, pitch: float,
-            arm: ArmGeometry = ARM) -> Optional[Joints]:
-    """Joint angles putting the finger pads at (x, y, z) at `pitch`, or None.
+def branch_solutions(x: float, y: float, z: float, pitch: float,
+                     arm: ArmGeometry = ARM) -> Tuple[Joints, ...]:
+    """Both elbow spellings of this target, *before* the stops are applied.
 
-    None means the target cannot be served — either the wrist point falls
-    outside the annulus the two proximal links can span, or every elbow branch
-    needs a joint past its stop. It is deliberately not clamped to the nearest
-    achievable pose: a caller that gets angles back is entitled to assume the
-    gripper will arrive, and silently substituting a different target is how an
-    arm reaches confidently for somewhere it cannot get to.
+    Elbow-up first, elbow-down second. Empty when the wrist point falls outside
+    the annulus the two proximal links can span, which is the one failure that
+    is about geometry rather than about stops.
 
-    The elbow sign gives two solutions. Elbow-up is preferred and elbow-down is
-    the fallback, so a target only fails once both are out of limits.
+    Split out of `inverse` so that `redundancy.py` can weigh the two branches
+    against each other rather than re-deriving them. Two implementations of the
+    same closed form is how the search and the solver end up disagreeing about
+    which targets exist, and the disagreement would show up as an arm refusing
+    a pose the search had just promised.
     """
     dx = x - arm.pivot_x
     rho = math.hypot(dx, y)
@@ -143,15 +164,38 @@ def inverse(x: float, y: float, z: float, pitch: float,
     c3 = ((rho_w * rho_w + zeta_w * zeta_w - arm.l1 * arm.l1 - arm.l2 * arm.l2)
           / (2 * arm.l1 * arm.l2))
     if abs(c3) > 1.0 + _COS_EPS:
-        return None
+        return ()
     c3 = max(-1.0, min(1.0, c3))
 
     base = math.atan2(rho_w, zeta_w)
+    out = []
     for elbow in (math.acos(c3), -math.acos(c3)):     # elbow-up first
         lift = base - math.atan2(arm.l2 * math.sin(elbow),
                                  arm.l1 + arm.l2 * math.cos(elbow))
         wrist = (math.pi / 2 - pitch) - lift - elbow
-        q = (_wrap(pan), _wrap(lift), _wrap(elbow), _wrap(wrist))
+        out.append((_wrap(pan), _wrap(lift), _wrap(elbow), _wrap(wrist)))
+    return tuple(out)
+
+
+def inverse(x: float, y: float, z: float, pitch: float,
+            arm: ArmGeometry = ARM) -> Optional[Joints]:
+    """Joint angles putting the finger pads at (x, y, z) at `pitch`, or None.
+
+    None means the target cannot be served — either the wrist point falls
+    outside the annulus the two proximal links can span, or every elbow branch
+    needs a joint past its stop. It is deliberately not clamped to the nearest
+    achievable pose: a caller that gets angles back is entitled to assume the
+    gripper will arrive, and silently substituting a different target is how an
+    arm reaches confidently for somewhere it cannot get to.
+
+    The elbow sign gives two solutions. Elbow-up is preferred and elbow-down is
+    the fallback, so a target only fails once both are out of limits.
+
+    The preference is a convention, not a criterion: it takes the first branch
+    that fits rather than the better one. `redundancy.resolve` is the entry
+    point that chooses on a stated basis instead.
+    """
+    for q in branch_solutions(x, y, z, pitch, arm):
         if arm.within_limits(q):
             return q
     return None
