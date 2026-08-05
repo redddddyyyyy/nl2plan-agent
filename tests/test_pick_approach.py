@@ -13,6 +13,16 @@ from __future__ import annotations
 
 import pytest
 
+# `manipulation` imports geometry_msgs, so this whole module needs a ROS
+# environment. Skip rather than let the ImportError escape: an unhandled one
+# here is a *collection* error, which aborts the entire run with exit 2 and
+# reports no tests at all — so a machine without ROS sees the suite as broken
+# rather than partly skipped. requirements.txt promises the agent side runs
+# without ROS, and every other ROS-dependent module already skips cleanly.
+pytest.importorskip(
+    "geometry_msgs",
+    reason="needs ROS2 message packages; source the ROS environment to run this")
+
 from nl2plan_agent.ros_backend import backend as backend_mod
 from nl2plan_agent.ros_backend import manipulation, nav, perception
 from nl2plan_agent.ros_backend.backend import RosBackend

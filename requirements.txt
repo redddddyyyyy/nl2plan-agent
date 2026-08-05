@@ -9,3 +9,10 @@ streamlit>=1.30
 
 # Test deps
 pytest>=8.0
+
+# tests/test_block_geometry.py and tests/test_image_decode.py import the
+# detector, which imports cv2. Headless because nothing here opens a window,
+# and the GUI build drags in system libraries that are absent on a bare CI box.
+# Without it those two modules fail at *collection*, which aborts the whole run
+# rather than skipping two files.
+opencv-python-headless>=4.9
